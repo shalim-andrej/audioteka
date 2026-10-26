@@ -1,0 +1,37 @@
+{
+  "name": "next-audiobooks",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "init-db": "node scripts/init_db.js",
+    "import-catalog": "node scripts/import_audiobooks.js",
+    "harvest-all": "node scripts/harvest_all.js",
+    "harvest-authors": "node scripts/harvest_authors.js",
+    "harvest-to-50k": "node scripts/harvest_to_50k.js",
+    "harvest-multi": "node scripts/harvest_multi_source.js",
+    "harvest-knigavuhe-mega": "node scripts/harvest_knigavuhe_mega.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@tailwindcss/turbopack": "^4.3.3",
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.6.1",
+    "lucide-react": "^1.61.0",
+    "next": "^16.4.2",
+    "postcss": "^8.5.31",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
+  }
+}
