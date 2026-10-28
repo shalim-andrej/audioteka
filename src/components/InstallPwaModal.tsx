@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Download, X, CheckCircle2, Smartphone, Monitor, Sparkles, ShieldCheck, ArrowDownCircle } from "lucide-react";
+import { Download, X, Sparkles, CheckCircle2 } from "lucide-react";
 import { reachMetrikaGoal } from "@/components/YandexMetrika";
 
 interface InstallPwaModalProps {
@@ -10,56 +10,36 @@ interface InstallPwaModalProps {
 }
 
 export default function InstallPwaModal({ isOpen, onClose }: InstallPwaModalProps) {
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [downloadStarted, setDownloadStarted] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone === true;
-    setIsStandalone(standalone);
-
-    const ua = window.navigator.userAgent.toLowerCase();
-    setIsMobile(/android|iphone|ipad|ipod|mobile/.test(ua));
+    if (isOpen) {
+      setDownloadStarted(false);
+    }
   }, [isOpen]);
 
   const handleDownloadApk = () => {
     reachMetrikaGoal("pwa_install_click", { type: "apk_download" });
-    // Прямое скачивание нативного APK-файла для Android
+    setDownloadStarted(true);
+
+    // Прямое скачивание нативного APK-файла
     const link = document.createElement("a");
     link.href = "/audioteka-pro.apk";
     link.download = "audioteka-pro.apk";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
 
-  const handleWebInstall = async () => {
-    reachMetrikaGoal("pwa_install_click", { type: "web_install" });
-    const prompt = (window as any).__pwa_install_prompt;
-    if (prompt) {
-      try {
-        await prompt.prompt();
-        const { outcome } = await prompt.userChoice;
-        if (outcome === "accepted") {
-          setTimeout(onClose, 2000);
-        }
-      } catch (e) {
-        console.warn(e);
-      }
-    } else {
-      // Если браузер перехватил установку (например, Яндекс Браузер на Android), скачиваем APK напрямую!
-      handleDownloadApk();
-    }
+    setTimeout(() => {
+      onClose();
+    }, 2500);
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="relative w-full max-w-sm sm:max-w-md bg-gradient-to-b from-[#131C31] via-[#0E1524] to-[#080B11] border border-white/15 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-sm bg-gradient-to-b from-[#131C31] via-[#0E1524] to-[#080B11] border border-white/15 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden">
         {/* Glow accent */}
         <div className="absolute top-0 right-0 w-48 h-48 bg-[#F59E0B]/15 rounded-full blur-3xl pointer-events-none" />
 
@@ -100,41 +80,33 @@ export default function InstallPwaModal({ isOpen, onClose }: InstallPwaModalProp
               <div className="text-[10px] text-gray-400">Экран заблокирован — звук играет</div>
             </div>
             <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08]">
-              <div className="text-xs font-bold text-white mb-0.5">⚡️ На рабочем столе</div>
-              <div className="text-[10px] text-gray-400">Запуск в 1 клик с главного экрана</div>
+              <div className="text-xs font-bold text-white mb-0.5">⚡️ На рабочий стол</div>
+              <div className="text-[10px] text-gray-400">Ярлык приложения на телефоне</div>
             </div>
           </div>
 
-          {/* 1. DIRECT NATIVE APK DOWNLOAD (FOR ANDROID) */}
+          {/* ONE SINGLE CLEAN BUTTON */}
           <button
             onClick={handleDownloadApk}
             className="w-full py-3.5 px-4 bg-gradient-to-r from-[#F59E0B] via-[#EA580C] to-[#D97706] hover:brightness-110 active:scale-98 text-[#06080D] font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xl shadow-[#F59E0B]/25"
           >
-            <Download className="w-4 h-4 stroke-[2.5]" />
-            <span>Скачать APK на телефон (Android)</span>
-          </button>
-
-          {/* 2. DIRECT WEB INSTALL (FOR PC / CHROME / PWA) */}
-          <button
-            onClick={handleWebInstall}
-            className="w-full py-2.5 px-3 bg-white/10 hover:bg-white/15 active:scale-98 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border border-white/10"
-          >
-            <Monitor className="w-4 h-4 text-[#F59E0B]" />
-            <span>Установить в браузер (ПК / Windows)</span>
-          </button>
-
-          {/* Micro-hint */}
-          <div className="text-[11px] text-gray-400 text-center leading-relaxed pt-1">
-            {isMobile ? (
-              <span>
-                Файл <b className="text-white">audioteka-pro.apk</b> скачается за 1 секунду. Нажмите «Открыть» ➔ «Установить» — и ярлык появится на рабочем столе телефона.
-              </span>
+            {downloadStarted ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-[#06080D]" />
+                <span>Скачивание началось...</span>
+              </>
             ) : (
-              <span>
-                На компьютере ярлык можно создать перетаскиванием значка замочка из адресной строки на рабочий стол.
-              </span>
+              <>
+                <Download className="w-4 h-4 stroke-[2.5]" />
+                <span>Скачать приложение на телефон</span>
+              </>
             )}
-          </div>
+          </button>
+
+          {/* Clean simple hint */}
+          <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+            Файл <b className="text-white">audioteka-pro.apk</b> скачается напрямую. Нажмите «Открыть» ➔ «Установить» — и ярлык появится на рабочем столе.
+          </p>
         </div>
       </div>
     </div>
