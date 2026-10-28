@@ -1,32 +1,44 @@
 {
-  "id": "audioteka-pro-pwa",
+  "id": "/",
   "name": "Аудиотека PRO — Аудиокниги онлайн",
   "short_name": "Аудиотека PRO",
-  "description": "Слушайте шедевры русской и мировой литературы в отличном качестве онлайн бесплатно без рекламы и блокировок",
-  "start_url": "/",
+  "description": "Слушайте шедевры литературы онлайн в отличном качестве без рекламы и блокировок",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
   "background_color": "#06080D",
   "theme_color": "#06080D",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
   "categories": ["books", "entertainment", "music"],
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
       "purpose": "any"
     }
   ]

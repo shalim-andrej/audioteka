@@ -14,7 +14,8 @@ import {
   Star,
   ArrowRight,
   ChevronDown,
-  Download
+  Download,
+  Smartphone
 } from "lucide-react";
 import InstallPwaModal from "@/components/InstallPwaModal";
 import { usePlayer } from "@/context/PlayerContext";
@@ -38,6 +39,7 @@ export default function Header({
   const router = useRouter();
   const { favorites, isPlaying, history, currentBook, playBook } = usePlayer();
   const [isMounted, setIsMounted] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   // Local search query state
   const [localSearch, setLocalSearch] = useState("");
@@ -51,6 +53,12 @@ export default function Header({
 
   useEffect(() => {
     setIsMounted(true);
+    if (typeof window !== "undefined") {
+      const standalone =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone === true;
+      setIsStandalone(standalone);
+    }
   }, []);
 
   // Close dropdown when clicking outside
@@ -73,7 +81,7 @@ export default function Header({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Search results state (searches all 52,400+ books in PostgreSQL database)
+  // Search results state (52,400+ books from Neon DB)
   const [matchingBooks, setMatchingBooks] = useState<Audiobook[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
@@ -157,7 +165,7 @@ export default function Header({
     }
   };
 
-  // Common Search Input Component
+  // Shared Search Form
   const renderSearchForm = () => (
     <form onSubmit={handleSearchSubmit} className="relative w-full">
       <button
@@ -198,13 +206,13 @@ export default function Header({
   );
 
   return (
-    <header className="sticky top-0 z-40 bg-[#06080D]/95 backdrop-blur-2xl border-b border-white/[0.08] px-3 sm:px-6 py-2.5 sm:py-3 transition-all overflow-visible">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-4">
+    <header className="sticky top-0 z-40 bg-[#06080D]/95 backdrop-blur-2xl border-b border-white/[0.08] px-3 sm:px-6 py-2.5 transition-all w-full">
+      <div className="max-w-7xl mx-auto flex flex-col gap-2">
         
-        {/* ROW 1: Logo & Controls (100% width on mobile, no horizontal overflow!) */}
-        <div className="flex items-center justify-between gap-2 w-full sm:w-auto">
+        {/* ROW 1: Logo (Left) and Action Buttons (Right) */}
+        <div className="flex items-center justify-between gap-3 w-full">
           {/* Brand Logo */}
-          <Link href="/" className="flex items-center gap-2 sm:gap-3 group flex-shrink-0">
+          <Link href="/" className="flex items-center gap-2 group flex-shrink-0">
             <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#F59E0B] via-[#D97706] to-[#B45309] flex items-center justify-center shadow-lg shadow-[#F59E0B]/25 group-hover:scale-105 transition-all duration-300">
               <Headphones className="w-4 h-4 sm:w-5 sm:h-5 text-[#06080D]" />
               {isPlaying && (
@@ -226,36 +234,112 @@ export default function Header({
             </div>
           </Link>
 
-          {/* Action Buttons Group on Mobile (Каталог, Приложение, Полка) */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 sm:hidden">
-            {/* Catalog Button Mobile */}
+          {/* Desktop Center Search Bar (Hidden on mobile, mobile has Row 2) */}
+          <div ref={searchContainerRef} className="hidden sm:block relative flex-1 max-w-md mx-4">
+            {renderSearchForm()}
+
+            {/* Desktop Live Search Dropdown */}
+            {isDropdownOpen && activeSearch.trim().length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 max-h-[70vh] overflow-y-auto">
+                {matchingBooks.length > 0 ? (
+                  <div className="p-1.5 divide-y divide-white/[0.05]">
+                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                      Быстрые результаты
+                    </div>
+                    {matchingBooks.map((b) => (
+                      <Link
+                        key={b.id}
+                        href={`/book/${b.id}`}
+                        onClick={() => {
+                          setIsDropdownOpen(false);
+                          handleInputChange("");
+                        }}
+                        className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/[0.06] transition-colors group"
+                      >
+                        <div className="relative w-8 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-gray-950 border border-white/10 flex items-center justify-center">
+                          <img
+                            src={b.coverUrl || `/api/cover?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`}
+                            alt={b.title}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = `/api/cover?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`;
+                            }}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-xs font-bold text-white group-hover:text-[#F59E0B] transition-colors truncate">
+                            {b.title}
+                          </h4>
+                          <p className="text-[11px] text-[#F59E0B] truncate">{b.author}</p>
+                          <span className="text-[10px] text-gray-400 block truncate">🎙 {b.narrator}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[11px] font-bold text-[#F59E0B] flex-shrink-0 pr-1">
+                          <Star className="w-3 h-3 fill-current" />
+                          <span>{b.rating}</span>
+                        </div>
+                      </Link>
+                    ))}
+                    <button
+                      onClick={handleSearchSubmit}
+                      className="w-full text-center py-2 text-xs font-bold text-[#F59E0B] hover:bg-white/[0.04] transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <span>Все результаты по запросу «{activeSearch}»</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-xs text-gray-400">
+                    {isSearching ? "Поиск среди 52 000+ книг..." : `Ничего не нашлось по запросу «${activeSearch}».`}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right Controls Group */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
+            {/* Desktop: Resume last button */}
+            {isMounted && lastItem && (!currentBook || !isPlaying) && (
+              <button
+                onClick={handleResumeLast}
+                className="hidden xl:flex items-center gap-1.5 bg-[#101726]/80 hover:bg-[#162035] border border-white/10 px-3 py-1.5 rounded-xl text-xs text-white transition-all cursor-pointer"
+                title={`Продолжить: ${lastItem.book.title}`}
+              >
+                <Play className="w-3 h-3 fill-[#F59E0B] text-[#F59E0B]" />
+                <span className="text-gray-300 truncate max-w-[100px]">{lastItem.book.title}</span>
+              </button>
+            )}
+
+            {/* Catalog Dropdown (Visible on BOTH mobile and desktop) */}
             <div ref={catalogRef} className="relative">
               <button
                 onClick={() => setIsCatalogOpen(!isCatalogOpen)}
-                className="flex items-center gap-1 text-[11px] font-bold text-gray-300 px-2.5 py-1.5 rounded-lg bg-white/[0.05] border border-white/10 transition-all cursor-pointer"
+                className="flex items-center gap-1 text-xs font-bold text-gray-300 hover:text-white px-2.5 sm:px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-[#F59E0B]/40 transition-all cursor-pointer"
               >
-                <Compass className="w-3.5 h-3.5 text-[#F59E0B]" />
+                <Compass className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#F59E0B]" />
                 <span>Каталог</span>
+                <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform ${isCatalogOpen ? "rotate-180" : ""}`} />
               </button>
 
               {isCatalogOpen && (
-                <div className="absolute top-full right-0 mt-2 w-60 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-2xl">
+                <div className="absolute top-full right-0 mt-2 w-60 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-2xl animate-in fade-in">
                   <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400 border-b border-white/[0.06] mb-1">
-                    Жанры
+                    Жанры каталога
                   </div>
                   {[
                     { name: "Все аудиокниги", param: "Все", icon: "📚" },
-                    { name: "Фантастика", param: "Фантастика", icon: "🚀" },
-                    { name: "Детективы", param: "Детективы", icon: "🕵️" },
-                    { name: "Мистика", param: "Ужасы и мистика", icon: "👻" },
-                    { name: "Психология", param: "Психология", icon: "🧠" },
-                    { name: "Классика", param: "Классика", icon: "📖" },
+                    { name: "Фантастика и фэнтези", param: "Фантастика", icon: "🚀" },
+                    { name: "Детективы и триллеры", param: "Детективы", icon: "🕵️" },
+                    { name: "Ужасы и мистика", param: "Ужасы и мистика", icon: "👻" },
+                    { name: "Психология и бизнес", param: "Психология", icon: "🧠" },
+                    { name: "Золотая классика", param: "Классика", icon: "📖" },
+                    { name: "Для детей и сказки", param: "Для детей", icon: "🎈" },
                   ].map((item) => (
                     <Link
                       key={item.param}
                       href={item.param === "Все" ? "/" : `/?genre=${encodeURIComponent(item.param)}`}
                       onClick={() => setIsCatalogOpen(false)}
-                      className="flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-200 hover:bg-white/[0.08] hover:text-[#F59E0B]"
+                      className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-gray-200 hover:bg-white/[0.08] hover:text-[#F59E0B]"
                     >
                       <span>{item.icon} {item.name}</span>
                       <ArrowRight className="w-3 h-3 text-gray-500" />
@@ -265,25 +349,40 @@ export default function Header({
               )}
             </div>
 
-            {/* Clear, explicit Install App Button on Mobile */}
-            <button
-              onClick={() => setIsPwaModalOpen(true)}
-              className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-[#F59E0B]/20 to-[#EA580C]/20 text-[#F59E0B] border border-[#F59E0B]/40 active:scale-95 shadow-sm cursor-pointer"
-              title="Установить официальное приложение Аудиотека PRO"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Установить</span>
-            </button>
+            {/* Desktop Only: Мне повезёт */}
+            {onRandomBook && (
+              <button
+                onClick={onRandomBook}
+                className="hidden md:flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 border border-white/[0.08] hover:border-[#F59E0B]/40 transition-all cursor-pointer"
+                title="Случайная книга"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#F59E0B]" />
+                <span>Мне повезёт</span>
+              </button>
+            )}
 
-            {/* Favorites Button Mobile */}
+            {/* Desktop Only: Install App Full Button */}
+            {!isStandalone && (
+              <button
+                onClick={() => setIsPwaModalOpen(true)}
+                className="hidden sm:flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-gradient-to-r from-[#F59E0B]/15 to-[#EA580C]/15 hover:from-[#F59E0B]/25 hover:to-[#EA580C]/25 text-[#F59E0B] border border-[#F59E0B]/35 transition-all active:scale-95 shadow-sm cursor-pointer whitespace-nowrap"
+                title="Установить официальное приложение Аудиотека PRO"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Установить приложение</span>
+              </button>
+            )}
+
+            {/* Favorites & Shelf Button (Visible everywhere) */}
             <button
               onClick={onOpenFavorites}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/[0.05] text-gray-200 border border-white/10 active:scale-95 relative cursor-pointer"
-              title="Моя полка"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 border border-white/[0.08] hover:border-red-500/30 transition-all active:scale-95 relative cursor-pointer"
+              title="Моя полка и закладки"
             >
-              <Heart className={`w-3.5 h-3.5 ${isMounted && favorites.length > 0 ? "fill-[#EF4444] text-[#EF4444]" : "text-gray-300"}`} />
+              <Heart className={`w-4 h-4 transition-transform ${isMounted && favorites.length > 0 ? "fill-[#EF4444] text-[#EF4444] scale-110" : "text-gray-300"}`} />
+              <span className="text-xs font-bold hidden sm:inline">Моя полка</span>
               {isMounted && favorites.length > 0 && (
-                <span className="bg-[#EF4444] text-white text-[9px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                <span className="bg-[#EF4444] text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
                   {favorites.length}
                 </span>
               )}
@@ -291,18 +390,15 @@ export default function Header({
           </div>
         </div>
 
-        {/* ROW 2 on Desktop / Center element: SEARCH BAR */}
-        <div ref={searchContainerRef} className="relative w-full sm:flex-1 sm:max-w-md sm:mx-auto">
+        {/* ROW 2 ON MOBILE: Full-Width Search Input */}
+        <div ref={searchContainerRef} className="block sm:hidden relative w-full pt-0.5">
           {renderSearchForm()}
 
-          {/* Live Search Instant Dropdown */}
+          {/* Mobile Live Search Dropdown */}
           {isDropdownOpen && activeSearch.trim().length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 duration-150 max-h-[70vh] overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-2 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-2xl animate-in fade-in max-h-[60vh] overflow-y-auto">
               {matchingBooks.length > 0 ? (
                 <div className="p-1.5 divide-y divide-white/[0.05]">
-                  <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400">
-                    Быстрые результаты
-                  </div>
                   {matchingBooks.map((b) => (
                     <Link
                       key={b.id}
@@ -311,144 +407,53 @@ export default function Header({
                         setIsDropdownOpen(false);
                         handleInputChange("");
                       }}
-                      className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/[0.06] transition-colors group"
+                      className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-white/[0.06] transition-colors"
                     >
-                      <div className="relative w-8 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-gray-950 border border-white/10 flex items-center justify-center">
+                      <div className="relative w-8 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-gray-950 border border-white/10">
                         <img
                           src={b.coverUrl || `/api/cover?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`}
                           alt={b.title}
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = `/api/cover?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`;
-                          }}
                           className="w-full h-full object-cover"
                         />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-xs font-bold text-white group-hover:text-[#F59E0B] transition-colors truncate">
-                          {b.title}
-                        </h4>
+                        <h4 className="text-xs font-bold text-white truncate">{b.title}</h4>
                         <p className="text-[11px] text-[#F59E0B] truncate">{b.author}</p>
-                        <span className="text-[10px] text-gray-400 block truncate">🎙 {b.narrator}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-[11px] font-bold text-[#F59E0B] flex-shrink-0 pr-1">
-                        <Star className="w-3 h-3 fill-current" />
-                        <span>{b.rating}</span>
                       </div>
                     </Link>
                   ))}
                   <button
                     onClick={handleSearchSubmit}
-                    className="w-full text-center py-2 text-xs font-bold text-[#F59E0B] hover:bg-white/[0.04] transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    className="w-full text-center py-2 text-xs font-bold text-[#F59E0B]"
                   >
-                    <span>Все результаты по запросу «{activeSearch}»</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    Все результаты по «{activeSearch}» →
                   </button>
                 </div>
               ) : (
-                <div className="p-6 text-center text-xs text-gray-400">
-                  {isSearching ? "Поиск среди 52 000+ книг..." : `Ничего не нашлось по запросу «${activeSearch}».`}
+                <div className="p-4 text-center text-xs text-gray-400">
+                  {isSearching ? "Поиск среди 52 000+ книг..." : `Ничего не найдено.`}
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Controls on Desktop (hidden on mobile, because they are inside Row 1 on mobile) */}
-        <div className="hidden sm:flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {/* Resume Listening */}
-          {isMounted && lastItem && (!currentBook || !isPlaying) && (
+        {/* ROW 3 ON MOBILE: Dedicated High-Visibility App Install Button */}
+        {!isStandalone && (
+          <div className="block sm:hidden w-full pt-0.5">
             <button
-              onClick={handleResumeLast}
-              className="hidden xl:flex items-center gap-1.5 bg-[#101726]/80 hover:bg-[#162035] border border-white/10 px-3 py-1.5 rounded-xl text-xs text-white transition-all cursor-pointer"
-              title={`Продолжить: ${lastItem.book.title}`}
+              onClick={() => setIsPwaModalOpen(true)}
+              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-[#F59E0B]/20 via-[#EA580C]/20 to-[#D97706]/20 border border-[#F59E0B]/40 text-[#F59E0B] flex items-center justify-center gap-2 text-xs font-extrabold tracking-wide active:scale-98 transition-all shadow-sm cursor-pointer"
             >
-              <Play className="w-3 h-3 fill-[#F59E0B] text-[#F59E0B]" />
-              <span className="text-gray-300 truncate max-w-[110px]">{lastItem.book.title}</span>
-              <span className="text-gray-500 font-mono text-[10px]">({lastItem.timeFormatted})</span>
+              <Smartphone className="w-3.5 h-3.5 text-[#F59E0B]" />
+              <span>📱 Установить приложение «Аудиотека PRO»</span>
+              <ArrowRight className="w-3 h-3 ml-auto opacity-70" />
             </button>
-          )}
-
-          {/* Desktop Catalog Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setIsCatalogOpen(!isCatalogOpen)}
-              className="flex items-center gap-1.5 text-xs font-bold text-gray-300 hover:text-white px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-[#F59E0B]/40 transition-all cursor-pointer"
-            >
-              <Compass className="w-4 h-4 text-[#F59E0B]" />
-              <span>Каталог</span>
-              <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isCatalogOpen ? "rotate-180" : ""}`} />
-            </button>
-
-            {isCatalogOpen && (
-              <div className="absolute top-full right-0 mt-2 w-64 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-2xl">
-                <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400 border-b border-white/[0.06] mb-1">
-                  Разделы каталога
-                </div>
-                {[
-                  { name: "Все аудиокниги", param: "Все", icon: "📚" },
-                  { name: "Фантастика и фэнтези", param: "Фантастика", icon: "🚀" },
-                  { name: "Детективы и триллеры", param: "Детективы", icon: "🕵️" },
-                  { name: "Ужасы и мистика", param: "Ужасы и мистика", icon: "👻" },
-                  { name: "Психология и бизнес", param: "Психология", icon: "🧠" },
-                  { name: "Золотая классика", param: "Классика", icon: "📖" },
-                  { name: "Для детей и сказки", param: "Для детей", icon: "🎈" },
-                ].map((item) => (
-                  <Link
-                    key={item.param}
-                    href={item.param === "Все" ? "/" : `/?genre=${encodeURIComponent(item.param)}`}
-                    onClick={() => setIsCatalogOpen(false)}
-                    className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-gray-200 hover:bg-white/[0.08] hover:text-[#F59E0B] transition-colors"
-                  >
-                    <span className="flex items-center gap-2">
-                      <span>{item.icon}</span>
-                      <span>{item.name}</span>
-                    </span>
-                    <ArrowRight className="w-3.5 h-3.5 text-gray-500" />
-                  </Link>
-                ))}
-              </div>
-            )}
           </div>
-
-          {onRandomBook && (
-            <button
-              onClick={onRandomBook}
-              className="hidden md:flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 border border-white/[0.08] hover:border-[#F59E0B]/40 transition-all active:scale-95 shadow-sm cursor-pointer"
-              title="Случайная книга"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[#F59E0B]" />
-              <span>Мне повезёт</span>
-            </button>
-          )}
-
-          {/* Desktop Install App Button */}
-          <button
-            onClick={() => setIsPwaModalOpen(true)}
-            className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-gradient-to-r from-[#F59E0B]/15 to-[#EA580C]/15 hover:from-[#F59E0B]/25 hover:to-[#EA580C]/25 text-[#F59E0B] border border-[#F59E0B]/30 transition-all active:scale-95 shadow-sm cursor-pointer"
-            title="Установить приложение Аудиотека PRO"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Приложение</span>
-          </button>
-
-          {/* Desktop Favorites */}
-          <button
-            onClick={onOpenFavorites}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 border border-white/[0.08] hover:border-red-500/30 transition-all active:scale-95 relative cursor-pointer"
-            title="Моя полка и закладки"
-          >
-            <Heart className={`w-4 h-4 transition-transform ${isMounted && favorites.length > 0 ? "fill-[#EF4444] text-[#EF4444] scale-110" : "text-gray-300"}`} />
-            <span className="text-xs font-bold">Моя полка</span>
-            {isMounted && favorites.length > 0 && (
-              <span className="bg-[#EF4444] text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-md shadow-red-500/30">
-                {favorites.length}
-              </span>
-            )}
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* PWA Install Modal with Interactive Guides */}
+      {/* PWA Install Modal with Detailed Instructions */}
       <InstallPwaModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
     </header>
   );

@@ -1,5 +1,5 @@
 // Service Worker для PWA «Аудиотека PRO»
-const CACHE_NAME = 'audioteka-v1';
+const CACHE_NAME = 'audioteka-pro-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -7,29 +7,25 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
-      );
-    })
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  // Аудиостриминг и динамические API не перехватываем, отдаем напрямую сети
   const url = event.request.url;
+  // Не кэшируем динамические API и тяжелые аудио-потоки
   if (
     event.request.method !== 'GET' ||
-    url.includes('/api/stream') ||
-    url.includes('/api/audiobooks') ||
+    url.includes('/api/') ||
     url.includes('.mp3') ||
-    url.includes('range=')
+    event.request.headers.get('range')
   ) {
     return;
   }
 
-  // Network-first стратегия для остальных ресурсов
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
