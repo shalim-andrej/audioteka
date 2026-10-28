@@ -57,6 +57,7 @@ export const metadata: Metadata = {
   publisher: "Аудиотека PRO",
   verification: {
     yandex: "dcae96af97eed294",
+    google: "google7c4abd81d324528e",
   },
   alternates: {
     canonical: siteUrl,
