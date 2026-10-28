@@ -273,7 +273,45 @@ function HomePageContent() {
           onSearchChange={setSearchQuery}
         />
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-12">
+          {/* TOP GENRES QUICK NAVIGATION (Всегда на виду в самом верху главной!) */}
+          <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {TOP_GENRES.map((genre) => {
+              const isActive = selectedGenre === genre;
+              return (
+                <button
+                  key={genre}
+                  onClick={() => {
+                    setSelectedGenre(genre);
+                    reachMetrikaGoal("genre_select", { genre });
+                    if (genre !== "Все") {
+                      window.scrollTo({ top: 380, behavior: "smooth" });
+                    }
+                  }}
+                  className={`text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-gradient-to-r from-[#F59E0B] to-[#D97706] text-[#06080D] shadow-md shadow-[#F59E0B]/25 scale-[1.02]"
+                      : "bg-[#0F1420]/80 text-gray-300 hover:bg-white/[0.08] hover:text-white border border-white/[0.08]"
+                  }`}
+                >
+                  {genre === "Все"
+                    ? "📚 Все аудиокниги"
+                    : genre === "Фантастика"
+                    ? "🚀 Фантастика"
+                    : genre === "Детективы"
+                    ? "🕵️ Детективы"
+                    : genre === "Ужасы и мистика"
+                    ? "👻 Ужасы"
+                    : genre === "Психология"
+                    ? "🧠 Психология"
+                    : genre === "Классика"
+                    ? "📖 Классика"
+                    : "🎈 Для детей"}
+                </button>
+              );
+            })}
+          </div>
+
           {/* 1. HERO BANNER: Auto-rotating Book of the Week from Database */}
           {isFrontpageDefault && topWeekly.length > 0 && (
             <HeroBanner allBooks={topWeekly} />

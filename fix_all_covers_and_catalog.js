@@ -1,3 +1,18 @@
+/**
+ * МАСТЕР-СКРИПТ ГЕНЕРАЛЬНОЙ УБОРКИ БАЗЫ ДАННЫХ И КАТАЛОГА
+ * 
+ * 1. ИСПРАВЛЯЕТ КЛОНИРОВАННЫЕ ОБЛОЖКИ: У каждой книги Дема Михайлова
+ *    ставится её ОРИГИНАЛЬНЫЙ красивый арт (никаких повторений картинки «Тернистый путь вниз»!).
+ * 2. УДАЛЯЕТ ДУБЛИКАТЫ (kvu-temnye-vremena).
+ * 3. НАВОДИТ ПОРЯДОК В «НОВИНКАХ»: старые дореволюционные статьи и книги 1905 года
+ *    («Силуэты русских писателей», стихи) убираются из раздела новинок в «Классику».
+ * 4. БАЛАНСИРУЕТ ВИТРИНЫ: в каждом ряду гарантируются РАЗНЫЕ авторы.
+ * 
+ * Запуск:
+ *   node fix_all_covers_and_catalog.js
+ *   node scripts/fix_all_covers_and_catalog.js
+ */
+
 const { createClient } = require("@libsql/client");
 const path = require("path");
 const fs = require("fs");
@@ -120,4 +135,4 @@ async function masterFix() {
   console.log(`💡 Перезапустите сервер (npm run dev) и обновите браузер (Ctrl + F5)!`);
 }
 
-masterFix().catch(console.error);ы
+masterFix().catch(console.error);

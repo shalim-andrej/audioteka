@@ -13,8 +13,11 @@ import {
   X,
   Star,
   Mic,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  Smartphone
 } from "lucide-react";
+import InstallPwaModal from "@/components/InstallPwaModal";
 import { usePlayer } from "@/context/PlayerContext";
 import { AUDIOBOOKS } from "@/lib/audiobook-data";
 import { Audiobook } from "@/lib/types";
@@ -40,7 +43,10 @@ export default function Header({
   // Local search query state (if not controlled by page)
   const [localSearch, setLocalSearch] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [isPwaModalOpen, setIsPwaModalOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const catalogRef = useRef<HTMLDivElement>(null);
 
   const activeSearch = propSearchQuery !== undefined ? propSearchQuery : localSearch;
 
@@ -56,6 +62,12 @@ export default function Header({
         !searchContainerRef.current.contains(e.target as Node)
       ) {
         setIsDropdownOpen(false);
+      }
+      if (
+        catalogRef.current &&
+        !catalogRef.current.contains(e.target as Node)
+      ) {
+        setIsCatalogOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -289,13 +301,47 @@ export default function Header({
             </button>
           )}
 
-          <Link
-            href="/"
-            className="hidden md:flex items-center gap-1.5 text-xs font-bold text-gray-300 hover:text-white px-3 py-2 rounded-xl hover:bg-white/[0.06] transition-colors"
-          >
-            <Compass className="w-4 h-4 text-[#F59E0B]" />
-            Каталог
-          </Link>
+          {/* Catalog & Genres Dropdown */}
+          <div ref={catalogRef} className="relative">
+            <button
+              onClick={() => setIsCatalogOpen(!isCatalogOpen)}
+              className="flex items-center gap-1.5 text-xs font-bold text-gray-300 hover:text-white px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-[#F59E0B]/40 transition-all cursor-pointer"
+            >
+              <Compass className="w-4 h-4 text-[#F59E0B]" />
+              <span>Каталог</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isCatalogOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {isCatalogOpen && (
+              <div className="absolute top-full right-0 mt-2 w-64 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-2xl animate-in fade-in slide-in-from-top-2">
+                <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400 border-b border-white/[0.06] mb-1">
+                  Разделы каталога
+                </div>
+                {[
+                  { name: "Все аудиокниги", param: "Все", icon: "📚" },
+                  { name: "Фантастика и фэнтези", param: "Фантастика", icon: "🚀" },
+                  { name: "Детективы и триллеры", param: "Детективы", icon: "🕵️" },
+                  { name: "Ужасы и мистика", param: "Ужасы и мистика", icon: "👻" },
+                  { name: "Психология и бизнес", param: "Психология", icon: "🧠" },
+                  { name: "Золотая классика", param: "Классика", icon: "📖" },
+                  { name: "Для детей и сказки", param: "Для детей", icon: "🎈" },
+                ].map((item) => (
+                  <Link
+                    key={item.param}
+                    href={item.param === "Все" ? "/" : `/?genre=${encodeURIComponent(item.param)}`}
+                    onClick={() => setIsCatalogOpen(false)}
+                    className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-gray-200 hover:bg-white/[0.08] hover:text-[#F59E0B] transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>{item.icon}</span>
+                      <span>{item.name}</span>
+                    </span>
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-500" />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
 
           {onRandomBook && (
             <button
@@ -307,6 +353,16 @@ export default function Header({
               <span className="hidden md:inline">Мне повезёт</span>
             </button>
           )}
+
+          {/* Download App Button (PWA) */}
+          <button
+            onClick={() => setIsPwaModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-gradient-to-r from-[#F59E0B]/15 to-[#EA580C]/15 hover:from-[#F59E0B]/25 hover:to-[#EA580C]/25 text-[#F59E0B] border border-[#F59E0B]/30 transition-all active:scale-95 shadow-sm cursor-pointer"
+            title="Скачать приложение Аудиотека PRO"
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Приложение</span>
+          </button>
 
           {/* Favorites & Shelf Button with Notification Badge */}
           <button
@@ -324,6 +380,9 @@ export default function Header({
           </button>
         </div>
       </div>
+
+      {/* PWA Install Modal */}
+      <InstallPwaModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
     </header>
   );
 }

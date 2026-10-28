@@ -33,8 +33,8 @@ export default function SearchAndFilters({
   narrators,
 }: SearchAndFiltersProps) {
   return (
-    <div className="space-y-4 mb-8 w-full">
-      {/* Active Search Filter Badge */}
+    <div className="space-y-4 mb-8">
+      {/* Active Search Filter Badge (если пользователь ищет в шапке) */}
       {searchQuery && (
         <div className="flex items-center gap-2 p-2.5 px-4 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-2xl w-fit animate-in fade-in">
           <span className="text-xs text-gray-300">
@@ -50,17 +50,17 @@ export default function SearchAndFilters({
         </div>
       )}
 
-      <div className="flex flex-col gap-4 w-full">
-        
-        {/* 1. ЖАНРЫ (строго в одну строку с горизонтальным скроллом) */}
-        <div className="flex flex-row overflow-x-auto gap-2 pb-2 scrollbar-none w-full">
+      {/* Filter Chips & Controls Row (Уровень Apple Books / LitRes) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* Genre Chips Horizontal Scroll */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
           {genres.map((genre) => {
             const isActive = selectedGenre === genre;
             return (
               <button
                 key={genre}
                 onClick={() => onGenreChange(genre)}
-                className={`shrink-0 text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+                className={`text-xs md:text-sm font-bold px-4 py-2.5 rounded-xl whitespace-nowrap transition-all cursor-pointer ${
                   isActive
                     ? "bg-gradient-to-r from-[#F59E0B] to-[#D97706] text-[#06080D] shadow-md shadow-[#F59E0B]/25 scale-[1.02]"
                     : "bg-[#0F1420]/80 text-gray-300 hover:bg-white/[0.08] hover:text-white border border-white/[0.08]"
@@ -72,11 +72,11 @@ export default function SearchAndFilters({
           })}
         </div>
 
-        {/* 2. ФИЛЬТРЫ (под жанрами, в своей строке) */}
-        <div className="flex flex-row flex-wrap items-center gap-2.5 w-full">
-          {/* Чтецы */}
+        {/* Dropdowns: Narrator, Duration & Sort */}
+        <div className="flex items-center gap-2.5 self-end lg:self-auto flex-wrap">
+          {/* Narrators Filter Dropdown */}
           {narrators && narrators.length > 1 && (
-            <div className="flex items-center gap-1.5 bg-[#0F1420]/80 border border-white/[0.08] px-3.5 py-2 rounded-xl text-xs md:text-sm text-gray-300 backdrop-blur-md shrink-0">
+            <div className="flex items-center gap-1.5 bg-[#0F1420]/80 border border-white/[0.08] px-3.5 py-2 rounded-xl text-xs md:text-sm text-gray-300 backdrop-blur-md">
               <Mic className="w-3.5 h-3.5 text-[#F59E0B]" />
               <select
                 value={selectedNarrator}
@@ -91,8 +91,7 @@ export default function SearchAndFilters({
             </div>
           )}
 
-          {/* Длительность */}
-          <div className="flex items-center gap-1.5 bg-[#0F1420]/80 border border-white/[0.08] px-3.5 py-2 rounded-xl text-xs md:text-sm text-gray-300 backdrop-blur-md shrink-0">
+          <div className="flex items-center gap-1.5 bg-[#0F1420]/80 border border-white/[0.08] px-3.5 py-2 rounded-xl text-xs md:text-sm text-gray-300 backdrop-blur-md">
             <SlidersHorizontal className="w-3.5 h-3.5 text-[#F59E0B]" />
             <select
               value={selectedDuration}
@@ -106,8 +105,7 @@ export default function SearchAndFilters({
             </select>
           </div>
 
-          {/* Сортировка */}
-          <div className="flex items-center gap-1.5 bg-[#0F1420]/80 border border-white/[0.08] px-3.5 py-2 rounded-xl text-xs md:text-sm text-gray-300 backdrop-blur-md shrink-0">
+          <div className="flex items-center gap-1.5 bg-[#0F1420]/80 border border-white/[0.08] px-3.5 py-2 rounded-xl text-xs md:text-sm text-gray-300 backdrop-blur-md">
             <ArrowUpDown className="w-3.5 h-3.5 text-[#F59E0B]" />
             <select
               value={selectedSort}
@@ -122,7 +120,6 @@ export default function SearchAndFilters({
             </select>
           </div>
         </div>
-
       </div>
     </div>
   );

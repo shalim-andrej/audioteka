@@ -15,7 +15,7 @@ interface PlayerContextType {
   volume: number;
   isMuted: boolean;
   isExpanded: boolean;
-  sleepTimer: number | null;
+  sleepTimer: number | null; // minutes left
   sleepMode: "minutes" | "chapter" | null;
   favorites: string[];
   history: { bookId: string; timestamp: number; progressSec: number; chapterIndex?: number }[];
@@ -83,6 +83,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     sleepModeRef.current = sleepMode;
   }, [sleepMode]);
 
+  // Initialize audio element and load localStorage ONCE on mount
   useEffect(() => {
     const audio = new Audio();
     audioRef.current = audio;
@@ -117,19 +118,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         saveProgress(b.id, audio.currentTime, chIdx);
       }
 
+      // If chapter sleep mode is active and we are near the end (last 15 seconds), fade out
       if (sleepModeRef.current === "chapter" && audio.duration > 30) {
         const remaining = audio.duration - audio.currentTime;
         if (remaining <= 15 && remaining > 0 && !fadeIntervalRef.current) {
           startFadeOut();
         }
-      }
-
-      if (
-        audio.duration > 0 &&
-        audio.currentTime >= audio.duration - 2 &&
-        sleepModeRef.current !== "chapter"
-      ) {
-        void nextChapter();
       }
     };
 
@@ -146,7 +140,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setSleepMode(null);
         setSleepTimer(null);
       } else {
-        void nextChapter();
+        nextChapter();
       }
     };
 
@@ -180,6 +174,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -218,6 +213,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [volume, isPlaying, currentBook, currentChapterIndex]);
 
+  // MediaSession API Integration (Lock Screen, Smartwatch, Headphones)
   useEffect(() => {
     if (typeof window !== "undefined" && "mediaSession" in navigator && currentBook) {
       const chapter = currentBook.chapters[currentChapterIndex];
@@ -279,6 +275,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }, 800);
   };
 
+  // Sleep timer countdown
   useEffect(() => {
     if (sleepMode !== "minutes" || sleepTimer === null || sleepTimer <= 0) {
       if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
@@ -304,6 +301,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!audioRef.current) return;
     const audio = audioRef.current;
 
+    // Автоматическая загрузка глав, если книга передана из быстрого поиска или каталога
     let fullBook = book;
     if (!fullBook.chapters || fullBook.chapters.length === 0) {
       try {
@@ -329,6 +327,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setCurrentBook(fullBook);
     setCurrentChapterIndex(idx);
 
+    // Если поток http или проблемный хост, проксируем
     let streamUrl = chapter.audioUrl;
     if (streamUrl.startsWith("http://")) {
       streamUrl = `/api/stream?url=${encodeURIComponent(streamUrl)}`;
@@ -430,50 +429,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const nextChapter = async () => {
-    const book = currentBookRef.current;
-    const chIdx = currentChapterIndexRef.current;
-
-    if (!book) return;
-
-    // Если главы не загружены — подгружаем из API
-    if (!book.chapters || book.chapters.length === 0) {
-      try {
-        const res = await fetch(`/api/audiobooks/${book.id}`);
-        const data = await res.json();
-        if (data.success && data.item && Array.isArray(data.item.chapters)) {
-          const updatedBook = data.item;
-          setCurrentBook(updatedBook);
-          currentBookRef.current = updatedBook;
-        } else {
-          setIsPlaying(false);
-          return;
-        }
-      } catch (e) {
-        console.error("Не удалось загрузить главы для перехода:", e);
-        setIsPlaying(false);
-        return;
-      }
-    }
-
-    const current = currentBookRef.current;
-    if (chIdx < current.chapters.length - 1) {
-      playBook(current, chIdx + 1);
+  const nextChapter = () => {
+    if (!currentBook) return;
+    if (currentChapterIndex < currentBook.chapters.length - 1) {
+      playBook(currentBook, currentChapterIndex + 1);
     } else {
       setIsPlaying(false);
     }
   };
 
   const prevChapter = () => {
-    const book = currentBookRef.current;
-    const chIdx = currentChapterIndexRef.current;
-    const ct = currentTime;
-
-    if (!book) return;
-    if (ct > 5) {
+    if (!currentBook) return;
+    if (currentTime > 5) {
       seek(0);
-    } else if (chIdx > 0) {
-      playBook(book, chIdx - 1);
+    } else if (currentChapterIndex > 0) {
+      playBook(currentBook, currentChapterIndex - 1);
     }
   };
 
@@ -520,6 +490,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setSleepMode(null);
   };
 
+  // Voice clarity boost toggle
   const toggleVoiceBoost = () => {
     setIsVoiceBoost((prev) => {
       const next = !prev;
@@ -529,6 +500,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // Bookmarks
   const addBookmark = (note?: string) => {
     if (!currentBook) return;
     const ch = currentBook.chapters[currentChapterIndex];
