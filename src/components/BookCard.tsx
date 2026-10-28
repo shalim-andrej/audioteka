@@ -95,8 +95,8 @@ export default function BookCard({ book }: BookCardProps) {
       {/* Book Metadata Info */}
       <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
         <div>
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-            {book.genre.split("&")[0].trim()}
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1 truncate" title={book.genre}>
+            {book.genre}
           </span>
 
           <Link href={`/book/${book.id}`} className="block">

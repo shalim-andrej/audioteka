@@ -1,32 +1,32 @@
 {
   "id": "audioteka-pro-pwa",
-  "name": "АУДИОТЕКА PRO — Премиальные аудиокниги",
-  "short_name": "Аудиотека",
-  "description": "Слушайте шедевры русской и мировой литературы в отличном качестве онлайн бесплатно без VPN",
+  "name": "Аудиотека PRO — Аудиокниги онлайн",
+  "short_name": "Аудиотека PRO",
+  "description": "Слушайте шедевры русской и мировой литературы в отличном качестве онлайн бесплатно без рекламы и блокировок",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#06080D",
   "theme_color": "#06080D",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "categories": ["books", "entertainment", "music"],
   "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/covers/master-i-margarita.jpg",
-      "sizes": "192x192",
-      "type": "image/jpeg",
-      "purpose": "any"
-    },
-    {
-      "src": "/covers/master-i-margarita.jpg",
-      "sizes": "512x512",
-      "type": "image/jpeg",
       "purpose": "any"
     }
   ]

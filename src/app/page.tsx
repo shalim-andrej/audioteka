@@ -275,7 +275,10 @@ function HomePageContent() {
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-12">
           {/* TOP GENRES QUICK NAVIGATION (Всегда на виду в самом верху главной!) */}
-          <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div
+            className="mb-6 flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth no-scrollbar w-full min-w-0 touch-pan-x -mx-1 px-1"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
             {TOP_GENRES.map((genre) => {
               const isActive = selectedGenre === genre;
               return (

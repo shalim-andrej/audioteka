@@ -3,30 +3,31 @@ import "./globals.css";
 import { PlayerProvider } from "@/context/PlayerContext";
 import AudioPlayerBar from "@/components/AudioPlayerBar";
 import YandexMetrika from "@/components/YandexMetrika";
+import PwaRegister from "@/components/PwaRegister";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://audioteka-pro.ru";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.audioteka-pro.ru";
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@graph": [
     {
       "@type": "WebSite",
-      "@id": "https://audioteka-pro.ru/#website",
-      "url": "https://audioteka-pro.ru/",
+      "@id": "https://www.audioteka-pro.ru/#website",
+      "url": "https://www.audioteka-pro.ru/",
       "name": "АУДИОТЕКА PRO",
       "description": "Премиальная онлайн-витрина аудиокниг. Слушайте шедевры литературы в высоком качестве онлайн бесплатно без VPN.",
       "potentialAction": {
         "@type": "SearchAction",
-        "target": "https://audioteka-pro.ru/?search={search_term_string}",
+        "target": "https://www.audioteka-pro.ru/?search={search_term_string}",
         "query-input": "required name=search_term_string",
       },
     },
     {
       "@type": "Organization",
-      "@id": "https://audioteka-pro.ru/#organization",
+      "@id": "https://www.audioteka-pro.ru/#organization",
       "name": "Аудиотека PRO",
-      "url": "https://audioteka-pro.ru",
-      "logo": "https://audioteka-pro.ru/icon.svg",
+      "url": "https://www.audioteka-pro.ru",
+      "logo": "https://www.audioteka-pro.ru/icon.svg",
       "email": "audioteka.ru@yandex.ru",
     },
   ],
@@ -54,6 +55,9 @@ export const metadata: Metadata = {
   authors: [{ name: "Аудиотека PRO" }],
   creator: "Аудиотека PRO",
   publisher: "Аудиотека PRO",
+  verification: {
+    yandex: "dcae96af97eed294",
+  },
   alternates: {
     canonical: siteUrl,
   },
@@ -102,6 +106,9 @@ export default function RootLayout({
     <html lang="ru">
       <head>
         <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="theme-color" content="#06080D" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -118,6 +125,7 @@ export default function RootLayout({
       <body className="bg-[#080B11] text-[#F8FAFC] min-h-screen flex flex-col font-sans selection:bg-[#E5A93C] selection:text-[#080B11]">
         {/* Яндекс Метрика 113789185 (Вебвизор, клики, карта скролла, цели) */}
         <YandexMetrika />
+        <PwaRegister />
 
         <PlayerProvider>
           <div className="flex-1 pb-28">

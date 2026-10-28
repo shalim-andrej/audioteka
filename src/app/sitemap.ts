@@ -3,7 +3,7 @@ import { getDb, initDb } from "@/lib/db";
 import { AUDIOBOOKS } from "@/lib/audiobook-data";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://audioteka-pro.ru";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.audioteka-pro.ru";
 
   const staticRoutes: MetadataRoute.Sitemap = [
     {
