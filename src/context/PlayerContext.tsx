@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Audiobook, Chapter, Bookmark } from "@/lib/types";
 import { reachMetrikaGoal } from "@/components/YandexMetrika";
 
@@ -15,9 +15,8 @@ interface PlayerContextType {
   volume: number;
   isMuted: boolean;
   isExpanded: boolean;
-  sleepTimer: number | null; // minutes left
+  sleepTimer: number | null;
   sleepMode: "minutes" | "chapter" | null;
-  favorites: string[];
   history: { bookId: string; timestamp: number; progressSec: number; chapterIndex?: number }[];
   bookmarks: Bookmark[];
   isVoiceBoost: boolean;
@@ -32,8 +31,6 @@ interface PlayerContextType {
   nextChapter: () => void;
   prevChapter: () => void;
   setSleep: (minutes: number | null, mode?: "minutes" | "chapter") => void;
-  toggleFavorite: (bookId: string) => void;
-  isFavorite: (bookId: string) => boolean;
   setIsExpanded: (expanded: boolean) => void;
   closePlayer: () => void;
   toggleVoiceBoost: () => void;
@@ -44,6 +41,22 @@ interface PlayerContextType {
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
+
+interface PlayerUiState {
+  currentBookId: string | null;
+  isPlaying: boolean;
+  playBook: (book: Audiobook, chapterIndex?: number, startTime?: number) => void;
+  togglePlay: () => void;
+  /** история прослушивания: нужна шапке для кнопки "Продолжить" */
+  history: { bookId: string; timestamp: number; progressSec: number; chapterIndex?: number }[];
+}
+
+const PlayerUiContext = createContext<PlayerUiState | null>(null);
+
+const HISTORY_KEY = "audio_history";
+const BOOKMARKS_KEY = "audio_bookmarks";
+const RATE_KEY = "audio_rate";
+const BOOST_KEY = "audio_voice_boost";
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentBook, setCurrentBook] = useState<Audiobook | null>(null);
@@ -57,68 +70,87 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [sleepMode, setSleepMode] = useState<"minutes" | "chapter" | null>(null);
-  const [favorites, setFavorites] = useState<string[]>([]);
   const [history, setHistory] = useState<{ bookId: string; timestamp: number; progressSec: number; chapterIndex?: number }[]>([]);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isVoiceBoost, setIsVoiceBoost] = useState<boolean>(false);
   const [lastListened, setLastListened] = useState<{ book: Audiobook; chapterIndex: number; timeSec: number } | null>(null);
 
+  // Аудиоэлемент создаётся ЛЕНИВО — только при первом воспроизведении.
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const sleepTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const sleepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSavedRef = useRef<number>(0);
 
+  // refs для обработчиков событий — чтобы не ловить устаревшие замыкания
   const currentBookRef = useRef<Audiobook | null>(null);
   const currentChapterIndexRef = useRef<number>(0);
   const sleepModeRef = useRef<"minutes" | "chapter" | null>(null);
+  const volumeRef = useRef<number>(0.9);
+  const nextChapterRef = useRef<() => void>(() => {});
 
-  useEffect(() => {
-    currentBookRef.current = currentBook;
-  }, [currentBook]);
+  useEffect(() => { currentBookRef.current = currentBook; }, [currentBook]);
+  useEffect(() => { currentChapterIndexRef.current = currentChapterIndex; }, [currentChapterIndex]);
+  useEffect(() => { sleepModeRef.current = sleepMode; }, [sleepMode]);
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
 
-  useEffect(() => {
-    currentChapterIndexRef.current = currentChapterIndex;
-  }, [currentChapterIndex]);
-
-  useEffect(() => {
-    sleepModeRef.current = sleepMode;
-  }, [sleepMode]);
-
-  // Initialize audio element and load localStorage ONCE on mount
-  useEffect(() => {
-    const audio = new Audio();
-    audioRef.current = audio;
-
+  const saveProgress = useCallback((bookId: string, progressSec: number, chIdx: number = 0) => {
     try {
-      const savedFavs = localStorage.getItem("audio_favorites");
-      if (savedFavs) setFavorites(JSON.parse(savedFavs));
-
-      const savedHistory = localStorage.getItem("audio_history");
-      if (savedHistory) {
-        const hist = JSON.parse(savedHistory);
-        setHistory(hist);
-      }
-
-      const savedBookmarks = localStorage.getItem("audio_bookmarks");
-      if (savedBookmarks) setBookmarks(JSON.parse(savedBookmarks));
-
-      const savedRate = localStorage.getItem("audio_rate");
-      if (savedRate) setPlaybackRate(Number(savedRate));
-
-      const savedBoost = localStorage.getItem("audio_voice_boost");
-      if (savedBoost) setIsVoiceBoost(savedBoost === "true");
-    } catch (e) {
-      console.error(e);
+      setHistory((prev) => {
+        const filtered = prev.filter((h) => h.bookId !== bookId);
+        const updated = [{ bookId, timestamp: Date.now(), progressSec, chapterIndex: chIdx }, ...filtered].slice(0, 30);
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+        return updated;
+      });
+    } catch {
+      /* localStorage может быть недоступен (приватный режим) */
     }
+  }, []);
+
+  const startFadeOut = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const initialVol = audio.volume;
+    let step = 0;
+    const totalSteps = 20;
+
+    fadeIntervalRef.current = setInterval(() => {
+      step++;
+      if (audioRef.current) {
+        audioRef.current.volume = Math.max(0, initialVol * (1 - step / totalSteps));
+      }
+      if (step >= totalSteps) {
+        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+        fadeIntervalRef.current = null;
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.volume = volumeRef.current;
+        }
+        setIsPlaying(false);
+        setSleepTimer(null);
+        setSleepMode(null);
+      }
+    }, 800);
+  }, []);
+
+  /** Создаёт аудиоэлемент и навешивает обработчики один раз */
+  const ensureAudio = useCallback((): HTMLAudioElement => {
+    if (audioRef.current) return audioRef.current;
+
+    const audio = new Audio();
+    audio.preload = "none";
 
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
+
       const b = currentBookRef.current;
       const chIdx = currentChapterIndexRef.current;
-      if (b && Math.floor(audio.currentTime) % 4 === 0) {
+
+      // запись в localStorage не чаще раза в 10 секунд
+      if (b && Math.abs(audio.currentTime - lastSavedRef.current) >= 10) {
+        lastSavedRef.current = audio.currentTime;
         saveProgress(b.id, audio.currentTime, chIdx);
       }
 
-      // If chapter sleep mode is active and we are near the end (last 15 seconds), fade out
       if (sleepModeRef.current === "chapter" && audio.duration > 30) {
         const remaining = audio.duration - audio.currentTime;
         if (remaining <= 15 && remaining > 0 && !fadeIntervalRef.current) {
@@ -128,9 +160,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
 
     const onDurationChange = () => {
-      if (!isNaN(audio.duration) && audio.duration > 0) {
-        setDuration(audio.duration);
-      }
+      if (!isNaN(audio.duration) && audio.duration > 0) setDuration(audio.duration);
     };
 
     const onEnded = () => {
@@ -139,24 +169,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setIsPlaying(false);
         setSleepMode(null);
         setSleepTimer(null);
-      } else {
-        nextChapter();
+        return;
       }
+      // через ref вызывается актуальная версия nextChapter
+      nextChapterRef.current();
     };
 
     const onError = () => {
-      console.warn("Audio playback error on source:", audio.src);
       const b = currentBookRef.current;
       const chIdx = currentChapterIndexRef.current;
-      if (audio.src && !audio.src.includes("/api/stream?url=") && b && b.chapters && b.chapters[chIdx]) {
-        const curCh = b.chapters[chIdx];
-        if (curCh?.audioUrl) {
-          console.log("Retrying audio via stream proxy...");
-          audio.src = `/api/stream?url=${encodeURIComponent(curCh.audioUrl)}`;
-          audio.load();
-          audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-          return;
-        }
+      // refs обновляются синхронно в playBook, поэтому здесь
+      // гарантированно лежит та книга, которую нажали
+      if (audio.src && !audio.src.includes("/api/stream?url=") && b?.chapters?.[chIdx]?.audioUrl) {
+        audio.src = `/api/stream?url=${encodeURIComponent(b.chapters[chIdx].audioUrl)}`;
+        audio.load();
+        audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+        return;
       }
       setIsPlaying(false);
     };
@@ -166,21 +194,329 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
 
+    audioRef.current = audio;
+    return audio;
+  }, [saveProgress, startFadeOut]);
+
+  // Загрузка настроек и истории из localStorage
+  useEffect(() => {
+    try {
+      const savedHistory = localStorage.getItem(HISTORY_KEY);
+      if (savedHistory) setHistory(JSON.parse(savedHistory));
+
+      const savedBookmarks = localStorage.getItem(BOOKMARKS_KEY);
+      if (savedBookmarks) setBookmarks(JSON.parse(savedBookmarks));
+
+      const savedRate = localStorage.getItem(RATE_KEY);
+      if (savedRate) setPlaybackRate(Number(savedRate));
+
+      const savedBoost = localStorage.getItem(BOOST_KEY);
+      if (savedBoost) setIsVoiceBoost(savedBoost === "true");
+    } catch (e) {
+      console.warn("Не удалось прочитать настройки плеера", e);
+    }
+
     return () => {
-      audio.removeEventListener("timeupdate", onTimeUpdate);
-      audio.removeEventListener("durationchange", onDurationChange);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("error", onError);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current = null;
+      }
+      if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
+      if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
     };
   }, []);
 
-  // Global Keyboard Shortcuts
+  // --- ОСНОВНЫЕ ФУНКЦИИ ---
+
+  const playBook = useCallback(async (book: Audiobook, chapterIndex: number = 0, startTime?: number) => {
+    const audio = ensureAudio();
+
+    let fullBook = book;
+    if (!fullBook.chapters || fullBook.chapters.length === 0) {
+      try {
+        const res = await fetch(`/api/audiobooks/${book.id}`);
+        const data = await res.json();
+        if (data.success && data.item && Array.isArray(data.item.chapters) && data.item.chapters.length > 0) {
+          fullBook = data.item;
+        }
+      } catch (e) {
+        console.warn("Не удалось загрузить главы книги:", e);
+      }
+    }
+
+    const chapters = fullBook.chapters ?? [];
+    if (chapters.length === 0) {
+      // Каталог Литрес: глав нет, прослушивание — на стороне площадки
+      if (fullBook.listenUrl) {
+        window.open(fullBook.listenUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+      console.warn("Нет глав и нет ссылки на площадку:", fullBook.title);
+      return;
+    }
+
+    const idx = Math.min(Math.max(0, chapterIndex), chapters.length - 1);
+    const chapter = chapters[idx];
+    if (!chapter?.audioUrl) {
+      if (fullBook.listenUrl) {
+        window.open(fullBook.listenUrl, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+
+    setCurrentBook(fullBook);
+    setCurrentChapterIndex(idx);
+
+    /*
+     * ВАЖНО: refs обновляем СИНХРОННО, не дожидаясь useEffect.
+     *
+     * Раньше currentBookRef менялся только после перерисовки, а обработчик
+     * ошибки onError читал именно его. Из-за блокировки CSP браузер почти
+     * сразу отдавал ошибку загрузки, onError успевал сработать раньше
+     * перерисовки и брал адрес аудио из ПРЕДЫДУЩЕЙ книги — поэтому половина
+     * карточек играла чужое произведение, а половина правильное.
+     */
+    currentBookRef.current = fullBook;
+    currentChapterIndexRef.current = idx;
+
+    /*
+     * Внешние адреса всегда идём через прокси /api/stream.
+     * CSP разрешает media-src только 'self' blob:, поэтому прямой адрес
+     * вида https://s9.knigavuhe.org/... браузер блокирует, и вместо звука
+     * запускался аварийный путь onError.
+     */
+    let streamUrl = chapter.audioUrl;
+    if (/^https?:\/\//i.test(streamUrl)) {
+      streamUrl = `/api/stream?url=${encodeURIComponent(streamUrl)}`;
+    }
+
+    if (!audio.src.endsWith(streamUrl) && audio.src !== streamUrl) {
+      audio.src = streamUrl;
+      audio.load();
+    }
+    audio.playbackRate = playbackRate;
+    audio.volume = isMuted ? 0 : volume;
+
+    const targetTime = startTime !== undefined && startTime >= 0 ? startTime : chapter.startTime || 0;
+    /*
+     * currentTime можно ставить только после загрузки метаданных:
+     * до этого браузер молча отбрасывает присвоение, и книга начинается
+     * с нуля даже если пользователь продолжал с середины.
+     */
+    const applyStartTime = () => {
+      try {
+        audio.currentTime = targetTime;
+      } catch {
+        /* метаданные ещё не готовы — повторим по loadedmetadata */
+      }
+    };
+    if (audio.readyState >= 1) {
+      applyStartTime();
+    } else {
+      audio.addEventListener("loadedmetadata", applyStartTime, { once: true });
+    }
+    setCurrentTime(targetTime);
+    lastSavedRef.current = targetTime;
+
+    try {
+      await audio.play();
+      setIsPlaying(true);
+      reachMetrikaGoal("play_audio", {
+        bookId: fullBook.id,
+        title: fullBook.title,
+        author: fullBook.author,
+        chapterIndex: idx,
+      });
+    } catch (err) {
+      const name = (err as DOMException)?.name;
+      if (name === "AbortError") return;
+      // фолбэк через стрим-прокси
+      if (chapter.audioUrl && !audio.src.includes("/api/stream?url=")) {
+        audio.src = `/api/stream?url=${encodeURIComponent(chapter.audioUrl)}`;
+        audio.load();
+        try {
+          await audio.play();
+          setIsPlaying(true);
+        } catch {
+          setIsPlaying(false);
+        }
+      } else {
+        setIsPlaying(false);
+      }
+    }
+  }, [ensureAudio, playbackRate, isMuted, volume]);
+
+  const togglePlay = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentBook) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    }
+  }, [isPlaying, currentBook]);
+
+  const seek = useCallback((seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = seconds;
+    setCurrentTime(seconds);
+    lastSavedRef.current = seconds;
+  }, []);
+
+  const skipTime = useCallback((seconds: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const newTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + seconds));
+    audio.currentTime = newTime;
+    setCurrentTime(newTime);
+    lastSavedRef.current = newTime;
+  }, []);
+
+  const setRate = useCallback((rate: number) => {
+    setPlaybackRate(rate);
+    try { localStorage.setItem(RATE_KEY, String(rate)); } catch {}
+    if (audioRef.current) audioRef.current.playbackRate = rate;
+  }, []);
+
+  const setVol = useCallback((vol: number) => {
+    setVolume(vol);
+    setIsMuted(vol === 0);
+    if (audioRef.current) audioRef.current.volume = vol;
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isMuted) {
+      setIsMuted(false);
+      audio.volume = volume || 0.8;
+    } else {
+      setIsMuted(true);
+      audio.volume = 0;
+    }
+  }, [isMuted, volume]);
+
+  const nextChapter = useCallback(() => {
+    const book = currentBookRef.current;
+    if (!book) return;
+    const chapters = book.chapters ?? [];
+    const idx = currentChapterIndexRef.current;
+    if (idx < chapters.length - 1) {
+      playBook(book, idx + 1);
+    } else {
+      setIsPlaying(false);
+    }
+  }, [playBook]);
+
+  const prevChapter = useCallback(() => {
+    const book = currentBookRef.current;
+    const audio = audioRef.current;
+    if (!book || !audio) return;
+    if (audio.currentTime > 5) {
+      seek(0);
+    } else {
+      const idx = currentChapterIndexRef.current;
+      if (idx > 0) playBook(book, idx - 1);
+    }
+  }, [playBook, seek]);
+
+  useEffect(() => {
+    nextChapterRef.current = nextChapter;
+  }, [nextChapter]);
+
+  const setSleep = useCallback((minutes: number | null, mode: "minutes" | "chapter" = "minutes") => {
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+      fadeIntervalRef.current = null;
+      if (audioRef.current) audioRef.current.volume = volumeRef.current;
+    }
+
+    if (mode === "chapter") {
+      setSleepMode("chapter");
+      setSleepTimer(null);
+      reachMetrikaGoal("sleep_timer", { mode: "chapter" });
+    } else {
+      setSleepMode(minutes ? "minutes" : null);
+      setSleepTimer(minutes);
+      if (minutes) reachMetrikaGoal("sleep_timer", { minutes, mode: "minutes" });
+    }
+  }, []);
+
+  const closePlayer = useCallback(() => {
+    if (audioRef.current) audioRef.current.pause();
+    setIsPlaying(false);
+    setCurrentBook(null);
+    if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
+    setSleepTimer(null);
+    setSleepMode(null);
+  }, []);
+
+  const toggleVoiceBoost = useCallback(() => {
+    setIsVoiceBoost((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(BOOST_KEY, String(next)); } catch {}
+      reachMetrikaGoal("voice_boost", { enabled: next });
+      return next;
+    });
+  }, []);
+
+  const addBookmark = useCallback((note?: string) => {
+    if (!currentBook) return;
+    const ch = currentBook.chapters?.[currentChapterIndex];
+    const m = Math.floor(currentTime / 60);
+    const s = Math.floor(currentTime % 60);
+    const timeFormatted = `${m}:${s < 10 ? "0" : ""}${s}`;
+
+    const newBm: Bookmark = {
+      id: "bm-" + Date.now(),
+      bookId: currentBook.id,
+      bookTitle: currentBook.title,
+      chapterIndex: currentChapterIndex,
+      chapterTitle: ch ? ch.title : `Глава ${currentChapterIndex + 1}`,
+      timeSec: Math.floor(currentTime),
+      timeFormatted,
+      note: note || `Закладка на ${timeFormatted}`,
+      createdAt: Date.now(),
+    };
+
+    setBookmarks((prev) => {
+      const updated = [newBm, ...prev];
+      try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(updated)); } catch {}
+      reachMetrikaGoal("add_bookmark", {
+        bookId: currentBook.id,
+        title: currentBook.title,
+        chapterIndex: currentChapterIndex,
+      });
+      return updated;
+    });
+  }, [currentBook, currentChapterIndex, currentTime]);
+
+  const removeBookmark = useCallback((id: string) => {
+    setBookmarks((prev) => {
+      const updated = prev.filter((b) => b.id !== id);
+      try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+
+  const jumpToBookmark = useCallback((bm: Bookmark, allBooks: Audiobook[]) => {
+    const targetBook = allBooks.find((b) => b.id === bm.bookId);
+    if (targetBook) playBook(targetBook, bm.chapterIndex, bm.timeSec);
+  }, [playBook]);
+
+  const resumeLastListened = useCallback(() => {
+    if (lastListened) playBook(lastListened.book, lastListened.chapterIndex, lastListened.timeSec);
+  }, [lastListened, playBook]);
+
+  // Горячие клавиши
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
-        return;
-      }
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) return;
+      if (!audioRef.current) return;
 
       if (e.code === "Space") {
         e.preventDefault();
@@ -193,10 +529,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         skipTime(15);
       } else if (e.code === "ArrowUp") {
         e.preventDefault();
-        setVol(Math.min(1, Number((volume + 0.1).toFixed(2))));
+        setVol(Math.min(1, Number((volumeRef.current + 0.1).toFixed(2))));
       } else if (e.code === "ArrowDown") {
         e.preventDefault();
-        setVol(Math.max(0, Number((volume - 0.1).toFixed(2))));
+        setVol(Math.max(0, Number((volumeRef.current - 0.1).toFixed(2))));
       } else if (e.code === "KeyM") {
         e.preventDefault();
         toggleMute();
@@ -211,71 +547,31 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [volume, isPlaying, currentBook, currentChapterIndex]);
+  }, [togglePlay, skipTime, setVol, toggleMute, prevChapter, nextChapter]);
 
-  // MediaSession API Integration (Lock Screen, Smartwatch, Headphones)
+  // MediaSession API
   useEffect(() => {
-    if (typeof window !== "undefined" && "mediaSession" in navigator && currentBook) {
-      const chapter = currentBook.chapters[currentChapterIndex];
+    if (typeof window === "undefined" || !("mediaSession" in navigator) || !currentBook) return;
+    try {
+      const chapter = currentBook.chapters?.[currentChapterIndex];
       navigator.mediaSession.metadata = new MediaMetadata({
         title: chapter ? chapter.title : currentBook.title,
         artist: currentBook.author,
         album: `${currentBook.title} • Читает ${currentBook.narrator}`,
-        artwork: [
-          {
-            src: currentBook.coverFile || currentBook.coverUrl,
-            sizes: "512x512",
-            type: "image/jpeg",
-          },
-        ],
+        artwork: [{ src: currentBook.coverFile || currentBook.coverUrl, sizes: "512x512", type: "image/jpeg" }],
       });
-
       navigator.mediaSession.setActionHandler("play", () => togglePlay());
       navigator.mediaSession.setActionHandler("pause", () => togglePlay());
       navigator.mediaSession.setActionHandler("seekbackward", () => skipTime(-15));
       navigator.mediaSession.setActionHandler("seekforward", () => skipTime(15));
       navigator.mediaSession.setActionHandler("previoustrack", () => prevChapter());
       navigator.mediaSession.setActionHandler("nexttrack", () => nextChapter());
+    } catch {
+      /* часть браузеров не поддерживает часть действий */
     }
-  }, [currentBook, currentChapterIndex]);
+  }, [currentBook, currentChapterIndex, togglePlay, skipTime, prevChapter, nextChapter]);
 
-  const saveProgress = (bookId: string, progressSec: number, chIdx: number = 0) => {
-    try {
-      setHistory((prev) => {
-        const filtered = prev.filter((h) => h.bookId !== bookId);
-        const updated = [{ bookId, timestamp: Date.now(), progressSec, chapterIndex: chIdx }, ...filtered].slice(0, 30);
-        localStorage.setItem("audio_history", JSON.stringify(updated));
-        return updated;
-      });
-    } catch (e) {}
-  };
-
-  const startFadeOut = () => {
-    if (!audioRef.current) return;
-    const initialVol = audioRef.current.volume;
-    let step = 0;
-    const totalSteps = 20;
-
-    fadeIntervalRef.current = setInterval(() => {
-      step++;
-      if (audioRef.current) {
-        audioRef.current.volume = Math.max(0, initialVol * (1 - step / totalSteps));
-      }
-      if (step >= totalSteps) {
-        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-        fadeIntervalRef.current = null;
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.volume = volume;
-        }
-        setIsPlaying(false);
-        setSleepTimer(null);
-        setSleepMode(null);
-      }
-    }, 800);
-  };
-
-  // Sleep timer countdown
+  // Таймер сна (минуты)
   useEffect(() => {
     if (sleepMode !== "minutes" || sleepTimer === null || sleepTimer <= 0) {
       if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
@@ -295,316 +591,85 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
     };
-  }, [sleepTimer, sleepMode]);
+  }, [sleepTimer, sleepMode, startFadeOut]);
 
-  const playBook = async (book: Audiobook, chapterIndex: number = 0, startTime?: number) => {
-    if (!audioRef.current) return;
-    const audio = audioRef.current;
+  const currentChapter = useMemo(
+    () => currentBook?.chapters?.[currentChapterIndex] || null,
+    [currentBook, currentChapterIndex]
+  );
 
-    // Автоматическая загрузка глав, если книга передана из быстрого поиска или каталога
-    let fullBook = book;
-    if (!fullBook.chapters || fullBook.chapters.length === 0) {
-      try {
-        const res = await fetch(`/api/audiobooks/${book.id}`);
-        const data = await res.json();
-        if (data.success && data.item && Array.isArray(data.item.chapters) && data.item.chapters.length > 0) {
-          fullBook = data.item;
-        }
-      } catch (e) {
-        console.warn("Could not load full chapters for book:", e);
-      }
-    }
+  const contextValue = useMemo(() => ({
+    currentBook,
+    currentChapter,
+    currentChapterIndex,
+    isPlaying,
+    currentTime,
+    duration,
+    playbackRate,
+    volume,
+    isMuted,
+    isExpanded,
+    sleepTimer,
+    sleepMode,
+    history,
+    bookmarks,
+    isVoiceBoost,
+    lastListened,
+    playBook,
+    togglePlay,
+    seek,
+    skipTime,
+    setRate,
+    setVol,
+    toggleMute,
+    nextChapter,
+    prevChapter,
+    setSleep,
+    setIsExpanded,
+    closePlayer,
+    toggleVoiceBoost,
+    addBookmark,
+    removeBookmark,
+    jumpToBookmark,
+    resumeLastListened,
+  }), [
+    currentBook, currentChapter, currentChapterIndex, isPlaying, currentTime, duration,
+    playbackRate, volume, isMuted, isExpanded, sleepTimer, sleepMode,
+    history, bookmarks, isVoiceBoost, lastListened,
+    playBook, togglePlay, seek, skipTime, setRate, setVol, toggleMute, nextChapter,
+    prevChapter, setSleep, closePlayer, toggleVoiceBoost, addBookmark, removeBookmark,
+    jumpToBookmark, resumeLastListened,
+  ]);
 
-    if (!fullBook.chapters || fullBook.chapters.length === 0) {
-      console.warn("No chapters available for book:", fullBook.title);
-      return;
-    }
-
-    const idx = Math.min(Math.max(0, chapterIndex), fullBook.chapters.length - 1);
-    const chapter = fullBook.chapters[idx];
-    if (!chapter || !chapter.audioUrl) return;
-
-    setCurrentBook(fullBook);
-    setCurrentChapterIndex(idx);
-
-    // Если поток http или проблемный хост, проксируем
-    let streamUrl = chapter.audioUrl;
-    if (streamUrl.startsWith("http://")) {
-      streamUrl = `/api/stream?url=${encodeURIComponent(streamUrl)}`;
-    }
-
-    const isSameSrc = audio.src.endsWith(streamUrl) || audio.src === streamUrl;
-    if (!isSameSrc) {
-      audio.src = streamUrl;
-    }
-    audio.playbackRate = playbackRate;
-    audio.volume = isMuted ? 0 : volume;
-
-    const chapterStart = chapter.startTime || 0;
-    const targetTime = startTime !== undefined && startTime >= 0 ? startTime : chapterStart;
-
-    audio.currentTime = targetTime;
-    setCurrentTime(targetTime);
-
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => {
-          setIsPlaying(true);
-          reachMetrikaGoal("play_audio", {
-            bookId: fullBook.id,
-            title: fullBook.title,
-            author: fullBook.author,
-            chapterIndex: idx,
-          });
-        })
-        .catch((err) => {
-          if (err.name === "AbortError") {
-            return;
-          }
-          console.warn("Direct play failed, retrying via stream proxy:", err);
-          if (chapter.audioUrl && !audio.src.includes("/api/stream?url=")) {
-            audio.src = `/api/stream?url=${encodeURIComponent(chapter.audioUrl)}`;
-            audio.load();
-            audio.play()
-              .then(() => setIsPlaying(true))
-              .catch(() => setIsPlaying(false));
-          } else {
-            setIsPlaying(false);
-          }
-        });
-    }
-  };
-
-  const togglePlay = () => {
-    if (!audioRef.current || !currentBook) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
-    }
-  };
-
-  const seek = (seconds: number) => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = seconds;
-    setCurrentTime(seconds);
-  };
-
-  const skipTime = (seconds: number) => {
-    if (!audioRef.current) return;
-    const newTime = Math.max(0, Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + seconds));
-    audioRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
-
-  const setRate = (rate: number) => {
-    setPlaybackRate(rate);
-    localStorage.setItem("audio_rate", String(rate));
-    if (audioRef.current) {
-      audioRef.current.playbackRate = rate;
-    }
-  };
-
-  const setVol = (vol: number) => {
-    setVolume(vol);
-    setIsMuted(vol === 0);
-    if (audioRef.current) {
-      audioRef.current.volume = vol;
-    }
-  };
-
-  const toggleMute = () => {
-    if (!audioRef.current) return;
-    if (isMuted) {
-      setIsMuted(false);
-      audioRef.current.volume = volume || 0.8;
-    } else {
-      setIsMuted(true);
-      audioRef.current.volume = 0;
-    }
-  };
-
-  const nextChapter = () => {
-    if (!currentBook) return;
-    if (currentChapterIndex < currentBook.chapters.length - 1) {
-      playBook(currentBook, currentChapterIndex + 1);
-    } else {
-      setIsPlaying(false);
-    }
-  };
-
-  const prevChapter = () => {
-    if (!currentBook) return;
-    if (currentTime > 5) {
-      seek(0);
-    } else if (currentChapterIndex > 0) {
-      playBook(currentBook, currentChapterIndex - 1);
-    }
-  };
-
-  const setSleep = (minutes: number | null, mode: "minutes" | "chapter" = "minutes") => {
-    if (fadeIntervalRef.current) {
-      clearInterval(fadeIntervalRef.current);
-      fadeIntervalRef.current = null;
-      if (audioRef.current) audioRef.current.volume = volume;
-    }
-
-    if (mode === "chapter") {
-      setSleepMode("chapter");
-      setSleepTimer(null);
-      reachMetrikaGoal("sleep_timer", { mode: "chapter" });
-    } else {
-      setSleepMode(minutes ? "minutes" : null);
-      setSleepTimer(minutes);
-      if (minutes) {
-        reachMetrikaGoal("sleep_timer", { minutes, mode: "minutes" });
-      }
-    }
-  };
-
-  const toggleFavorite = (bookId: string) => {
-    setFavorites((prev) => {
-      const isRemoving = prev.includes(bookId);
-      const next = isRemoving ? prev.filter((id) => id !== bookId) : [...prev, bookId];
-      localStorage.setItem("audio_favorites", JSON.stringify(next));
-      reachMetrikaGoal("toggle_favorite", { bookId, action: isRemoving ? "remove" : "add" });
-      return next;
-    });
-  };
-
-  const isFavorite = (bookId: string) => favorites.includes(bookId);
-
-  const closePlayer = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    setIsPlaying(false);
-    setCurrentBook(null);
-    if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
-    setSleepTimer(null);
-    setSleepMode(null);
-  };
-
-  // Voice clarity boost toggle
-  const toggleVoiceBoost = () => {
-    setIsVoiceBoost((prev) => {
-      const next = !prev;
-      localStorage.setItem("audio_voice_boost", String(next));
-      reachMetrikaGoal("voice_boost", { enabled: next });
-      return next;
-    });
-  };
-
-  // Bookmarks
-  const addBookmark = (note?: string) => {
-    if (!currentBook) return;
-    const ch = currentBook.chapters[currentChapterIndex];
-    const m = Math.floor(currentTime / 60);
-    const s = Math.floor(currentTime % 60);
-    const timeFormatted = `${m}:${s < 10 ? "0" : ""}${s}`;
-
-    const newBm: Bookmark = {
-      id: "bm-" + Date.now(),
-      bookId: currentBook.id,
-      bookTitle: currentBook.title,
-      chapterIndex: currentChapterIndex,
-      chapterTitle: ch ? ch.title : `Глава ${currentChapterIndex + 1}`,
-      timeSec: Math.floor(currentTime),
-      timeFormatted,
-      note: note || `Закладка на ${timeFormatted}`,
-      createdAt: Date.now(),
-    };
-
-    setBookmarks((prev) => {
-      const updated = [newBm, ...prev];
-      localStorage.setItem("audio_bookmarks", JSON.stringify(updated));
-      reachMetrikaGoal("add_bookmark", {
-        bookId: currentBook.id,
-        title: currentBook.title,
-        chapterIndex: currentChapterIndex,
-      });
-      return updated;
-    });
-  };
-
-  const removeBookmark = (id: string) => {
-    setBookmarks((prev) => {
-      const updated = prev.filter((b) => b.id !== id);
-      localStorage.setItem("audio_bookmarks", JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const jumpToBookmark = (bm: Bookmark, allBooks: Audiobook[]) => {
-    const targetBook = allBooks.find((b) => b.id === bm.bookId);
-    if (targetBook) {
-      playBook(targetBook, bm.chapterIndex, bm.timeSec);
-    }
-  };
-
-  const resumeLastListened = () => {
-    if (lastListened) {
-      playBook(lastListened.book, lastListened.chapterIndex, lastListened.timeSec);
-    }
-  };
-
-  const currentChapter = currentBook?.chapters[currentChapterIndex] || null;
+  // Отдельное значение для карточек: меняется только при play/pause,
+  // а не на каждом timeupdate.
+  const uiValue = useMemo<PlayerUiState>(
+    () => ({
+      currentBookId: currentBook?.id ?? null,
+      isPlaying,
+      playBook,
+      togglePlay,
+      history,
+    }),
+    [currentBook?.id, isPlaying, playBook, togglePlay, history]
+  );
 
   return (
-    <PlayerContext.Provider
-      value={{
-        currentBook,
-        currentChapter,
-        currentChapterIndex,
-        isPlaying,
-        currentTime,
-        duration,
-        playbackRate,
-        volume,
-        isMuted,
-        isExpanded,
-        sleepTimer,
-        sleepMode,
-        favorites,
-        history,
-        bookmarks,
-        isVoiceBoost,
-        lastListened,
-        playBook,
-        togglePlay,
-        seek,
-        skipTime,
-        setRate,
-        setVol,
-        toggleMute,
-        nextChapter,
-        prevChapter,
-        setSleep,
-        toggleFavorite,
-        isFavorite,
-        setIsExpanded,
-        closePlayer,
-        toggleVoiceBoost,
-        addBookmark,
-        removeBookmark,
-        jumpToBookmark,
-        resumeLastListened,
-      }}
-    >
-      {children}
+    <PlayerContext.Provider value={contextValue}>
+      <PlayerUiContext.Provider value={uiValue}>{children}</PlayerUiContext.Provider>
     </PlayerContext.Provider>
   );
 }
 
 export function usePlayer() {
   const context = useContext(PlayerContext);
-  if (!context) {
-    throw new Error("usePlayer must be used within a PlayerProvider");
-  }
+  if (!context) throw new Error("usePlayer must be used within a PlayerProvider");
+  return context;
+}
+
+/** Хук для карточек: не вызывает перерисовку на каждом timeupdate */
+export function usePlayerUi() {
+  const context = useContext(PlayerUiContext);
+  if (!context) throw new Error("usePlayerUi must be used within a PlayerProvider");
   return context;
 }

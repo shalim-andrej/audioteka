@@ -1,3 +1,5 @@
+// src/lib/types.ts
+
 export interface Chapter {
   id: string;
   num?: string;
@@ -38,6 +40,9 @@ export interface Bookmark {
   createdAt: number;
 }
 
+/** Откуда пришла запись каталога */
+export type BookSource = "litres" | "librivox" | "own";
+
 export interface Audiobook {
   id: string;
   title: string;
@@ -65,7 +70,23 @@ export interface Audiobook {
   coverDataUri?: string;
   description: string;
   shortDescription: string;
+
+  /**
+   * Главы. Для книг из каталога Литрес — пустой массив []:
+   * прямых ссылок на аудио нет, прослушивание идёт по listenUrl.
+   * Поле обязательное намеренно — чтобы не ломать существующие компоненты.
+   */
   chapters: Chapter[];
+
+  /** Реферальная ссылка на прослушивание на площадке (Литрес) */
+  listenUrl?: string;
+  /** Числовой ID книги в каталоге Литрес */
+  litresId?: number;
+  /** ISBN — нужен для точного матчинга с каталогом Литрес */
+  isbn?: string;
+  /** Источник записи: litres | librivox | own */
+  source?: BookSource;
+
   isFeatured?: boolean;
   tags?: string[];
   otherNarrations?: OtherNarration[];

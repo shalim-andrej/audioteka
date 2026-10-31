@@ -1,44 +1,56 @@
-# Dependencies
-/node_modules
-/.pnp
+# зависимости
+node_modules/
+.pnp
 .pnp.js
 
-# Testing / Next.js Build
-/.next/
-/out/
-/build
-/dist
+# сборка Next.js
+.next/
+out/
+build/
+dist/
+.swc/
 
-# SQLite Local Database (защита базы данных)
-audiobooks*.db*
-*.db
+# переменные окружения: в репозиторий не попадают
+.env
+.env.local
+.env.*.local
+
+# базы данных
+# рабочая база весит 528 КБ и нужна для запуска — её коммитим.
+# а вот пиратская копия на 636 МБ и служебные файлы SQLite не нужны
+audiobooks-pirate.db.bak
+audiobooks-template.db
 *.db-journal
 *.db-wal
 *.db-shm
 
-# Harvester cache
-/scripts/.cache/
+# отчёты скриптов: создаются при запуске
+*-report.txt
+clean-covers-report.txt
+cover-hosts-report.txt
+measure-book-report.txt
+measure-db-report.txt
+import-librivox-report.txt
+build-search-index-report.txt
+add-indexes-report.txt
 
-# Environment Variables
-.env*.local
+# скачанные каталоги
+litres-catalog.jsonl
+litres-catalog.jsonl.gz
 
-# Logs
+# системное
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+.pm2/
 
-# Editor directories and files
+# редакторы
 .vscode/
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-.DS_Store
-*.sql
-*.sql.gz
-*.ps1
-books_import.sql
-import_part_*.sql
+*.swp
+
+# резервные копии, которые делают скрипты
+*.bak
+*.orig

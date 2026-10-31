@@ -7,7 +7,7 @@ import Script from "next/script";
 export const METRIKA_COUNTER_ID = 113789185;
 
 /**
- * Отправка событий/целей в Яндекс Метрику (прослушивание, закладки, поиск, клики)
+ * Отправка событий/целей в Яндекс Метрику
  */
 export function reachMetrikaGoal(goalName: string, params?: Record<string, any>) {
   if (typeof window !== "undefined" && (window as any).ym) {
@@ -25,7 +25,7 @@ export function reachMetrikaGoal(goalName: string, params?: Record<string, any>)
 }
 
 /**
- * Отслеживание переходов по страницам Next.js App Router (SPA hit)
+ * Отслеживание переходов по страницам (SPA hit)
  */
 function MetrikaHitTracker({ counterId }: { counterId: string | number }) {
   const pathname = usePathname();
@@ -55,7 +55,8 @@ export default function YandexMetrika({ counterId }: YandexMetrikaProps) {
 
   return (
     <>
-      <Script id="yandex-metrika" strategy="afterInteractive">
+      {/* lazyOnload — скрипт загружается ПОСЛЕ отрисовки страницы (не блокирует LCP) */}
+      <Script id="yandex-metrika" strategy="lazyOnload">
         {`
           (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
           m[i].l=1*new Date();

@@ -10,7 +10,36 @@ export async function GET(req: NextRequest) {
   const page = searchParams.get("page") ? Number(searchParams.get("page")) : 1;
   const limit = searchParams.get("limit") ? Number(searchParams.get("limit")) : 24;
 
+  // Новый параметр: фильтрация по списку ID (через запятую)
+  const idsParam = searchParams.get("ids");
+  const ids = idsParam ? idsParam.split(",").map((s) => s.trim()).filter(Boolean) : null;
+
   try {
+    // Если передан ids — загружаем книги по этим ID и фильтруем
+    if (ids && ids.length > 0) {
+      // Запрашиваем с большим лимитом, чтобы точно захватить все запрошенные ID
+      const { items } = await getBooksFromDb({
+        search,
+        genre,
+        sort,
+        narrator,
+        page: 1,
+        limit: Math.max(ids.length, 100),
+      });
+
+      const filtered = items.filter((book) => ids.includes(book.id));
+
+      return NextResponse.json(
+        { success: true, count: filtered.length, total: filtered.length, page: 1, items: filtered },
+        {
+          headers: {
+            "Cache-Control": "public, s-maxage=60, stale-while-revalidate=3600",
+          },
+        }
+      );
+    }
+
+    // Обычный запрос без ids
     const { items, total } = await getBooksFromDb({
       search,
       genre,

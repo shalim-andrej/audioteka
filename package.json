@@ -1,32 +1,27 @@
 {
   "name": "next-audiobooks",
   "version": "1.0.0",
-  "main": "index.js",
+  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "init-db": "node scripts/init_db.js",
-    "import-catalog": "node scripts/import_audiobooks.js",
-    "harvest-all": "node scripts/harvest_all.js",
-    "harvest-authors": "node scripts/harvest_authors.js",
-    "harvest-to-50k": "node scripts/harvest_to_50k.js",
-    "harvest-multi": "node scripts/harvest_multi_source.js",
-    "harvest-knigavuhe-mega": "node scripts/harvest_knigavuhe_mega.js"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "db:migrate": "node scripts/migrate.js",
+    "catalog:import": "node scripts/import-litres.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "browserslist": [
+    "chrome >= 111",
+    "edge >= 111",
+    "firefox >= 111",
+    "safari >= 16.4"
+  ],
   "dependencies": {
     "@libsql/client": "^0.18.0",
     "@neondatabase/serverless": "^1.2.0",
     "@tailwindcss/turbopack": "^4.3.3",
-    "@types/node": "^20.19.43",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "autoprefixer": "^10.6.1",
     "lucide-react": "^1.61.0",
     "next": "^16.4.2",
     "pg": "^8.23.1",
@@ -34,9 +29,20 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.9.3"
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
-    "@types/pg": "^8.23.1"
+    "@next/bundle-analyzer": "^16.4.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.19.43",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jest": "^30.5.2",
+    "jest-environment-jsdom": "^30.5.2",
+    "typescript": "^5.9.3"
   }
 }

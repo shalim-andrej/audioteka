@@ -2,81 +2,58 @@ import { getDb, initDb } from "./db";
 import { Audiobook, Chapter } from "./types";
 import { AUDIOBOOKS } from "./audiobook-data";
 
-interface SearchIndexItem {
-  id: string;
-  title: string;
-  author: string;
-  narrator: string;
-  genre: string;
-  year: number;
-  rating: number;
-  votesCount: number;
-  durationSeconds: number;
-  durationFormatted: string;
-  coverUrl: string;
-  shortDescription: string;
-  isFeatured: boolean;
-  createdAt: number;
-  titleLower: string;
-  authorLower: string;
-  narratorLower: string;
-  genreLower: string;
+const DEFAULT_AUTHOR = "Популярный автор";
+const DEFAULT_NARRATOR = "Профессиональный чтец";
+const DEFAULT_GENRE = "Популярная литература";
+
+const GENRE_KEYWORDS: Record<string, string[]> = {
+  "фантастика": ["фантастик", "сталкер", "фэнтези", "космос"],
+  "детективы": ["детектив", "триллер", "приключен", "расследован"],
+  "ужасы и мистика": ["ужас", "мистик", "хоррор"],
+  "психология": ["психолог", "философ", "бизнес", "саморазвит"],
+  "классика": ["классик", "литератур", "драма", "золотой фонд"],
+  "для детей": ["дет", "сказк"],
+};
+
+/**
+ * Обложка, сохранённая как base64 (data:image/...), весит 60–90 КБ
+ * и уезжает в HTML целиком. Тринадцать таких картинок превращали
+ * каталог в 964 КБ и задерживали открытие страницы на секунды.
+ *
+ * Такую обложку считаем отсутствующей: карточка покажет градиент.
+ */
+function sanitizeCoverUrl(value: unknown): string {
+  const url = String(value ?? "").trim();
+  if (!url) return "";
+  if (url.startsWith("data:")) return "";
+  return url;
 }
 
-let memorySearchCache: SearchIndexItem[] | null = null;
-let cacheLoadingPromise: Promise<SearchIndexItem[]> | null = null;
+/**
+ * Есть ли в базе полнотекстовый индекс books_fts.
+ * Проверяем один раз на процесс, ответ запоминаем.
+ */
+let ftsAvailable: boolean | null = null;
 
-function rowToSearchItem(row: any): SearchIndexItem {
-  const title = String(row.title || "");
-  const author = String(row.author || "Популярный автор");
-  const narrator = String(row.narrator || "Профессиональный чтец");
-  const genre = String(row.genre || "Популярная литература");
-  const sec = Number(row.duration_seconds) || 3600;
-  const createdAt = Number(row.created_at) || Date.now();
-
-  return {
-    id: String(row.id),
-    title,
-    author,
-    narrator,
-    genre,
-    year: Number(row.year) || 2024,
-    rating: Number(row.rating) || 9.5,
-    votesCount: Number(row.votes_count) || 1000,
-    durationSeconds: sec,
-    durationFormatted: String(row.duration_formatted || `${Math.floor(sec / 3600)} ч 00 мин`),
-    coverUrl: String(row.cover_url || ""),
-    shortDescription: String(row.short_description || ""),
-    isFeatured: Boolean(row.is_featured),
-    createdAt,
-    titleLower: title.toLowerCase(),
-    authorLower: author.toLowerCase(),
-    narratorLower: narrator.toLowerCase(),
-    genreLower: genre.toLowerCase(),
-  };
+async function hasFtsIndex(): Promise<boolean> {
+  if (ftsAvailable !== null) return ftsAvailable;
+  try {
+    const db = getDb();
+    await db.execute({ sql: "SELECT rowid FROM books_fts LIMIT 1", args: [] });
+    ftsAvailable = true;
+  } catch {
+    ftsAvailable = false;
+  }
+  return ftsAvailable;
 }
 
-function searchItemToAudiobook(item: SearchIndexItem): Audiobook {
-  return {
-    id: item.id,
-    title: item.title,
-    author: item.author,
-    narrator: item.narrator,
-    genre: item.genre,
-    year: item.year,
-    rating: item.rating,
-    votesCount: item.votesCount,
-    durationSeconds: item.durationSeconds,
-    durationFormatted: item.durationFormatted,
-    bitrate: "192 kbps, MP3 Stereo",
-    fileSize: `${Math.round((item.durationSeconds * 24) / 1024)} МБ`,
-    coverUrl: item.coverUrl,
-    shortDescription: item.shortDescription,
-    description: item.shortDescription || `Аудиокнига «${item.title}» автора ${item.author}.`,
-    isFeatured: item.isFeatured,
-    tags: [item.genre, "Аудиокнига", "Бестселлер"],
-    chapters: [],
-  };
+/** Превращает запрос человека в строку MATCH для полнотекстового индекса. */
+function toFtsQuery(search: string): string {
+  return search
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => `"${word.replace(/"/g, "")}"*`)
+    .join(" ");
 }
 
 function fullRowToAudiobook(row: any): Audiobook {
@@ -85,12 +62,9 @@ function fullRowToAudiobook(row: any): Audiobook {
     if (row.chapters) {
       chapters = typeof row.chapters === "string" ? JSON.parse(row.chapters) : row.chapters;
     }
-  } catch (e) {
+  } catch {
     chapters = [];
   }
-
-  const durationSec = Number(row.duration_seconds) || 3600;
-  const bookId = String(row.id);
 
   let comments: any[] = [];
   try {
@@ -106,23 +80,25 @@ function fullRowToAudiobook(row: any): Audiobook {
     }
   } catch {}
 
+  const durationSec = Number(row.duration_seconds) || 3600;
+
   return {
-    id: bookId,
+    id: String(row.id),
     title: String(row.title),
     author: String(row.author),
     narrator: String(row.narrator),
     genre: String(row.genre),
     year: Number(row.year) || 1900,
-    rating: Number(row.rating) || 9.5,
+    rating: Number(row.rating) || 0,
     narratorRating: row.narrator_rating ? Number(row.narrator_rating) : undefined,
-    votesCount: Number(row.votes_count) || 1000,
-    listensCount: row.listens_count ? Number(row.listens_count) : undefined,
-    shelvedCount: row.shelved_count ? Number(row.shelved_count) : undefined,
+    votesCount: Number(row.votes_count) || 0,
+    listensCount: row.listens_count ? Number(row.listens_count) : 0,
+    shelvedCount: row.shelved_count ? Number(row.shelved_count) : 0,
     durationSeconds: durationSec,
     durationFormatted: String(row.duration_formatted || "1 ч 00 мин"),
     bitrate: row.bitrate ? String(row.bitrate) : undefined,
     fileSize: row.file_size ? String(row.file_size) : undefined,
-    coverUrl: String(row.cover_url || ""),
+    coverUrl: sanitizeCoverUrl(row.cover_url),
     shortDescription: String(row.short_description || ""),
     description: String(row.description || ""),
     isFeatured: Boolean(row.is_featured),
@@ -135,63 +111,18 @@ function fullRowToAudiobook(row: any): Audiobook {
   };
 }
 
-// Загрузка глобального легковесного индекса в память с санитарным фильтром
-async function getMemorySearchCache(): Promise<SearchIndexItem[]> {
-  if (memorySearchCache && memorySearchCache.length > 0) {
-    return memorySearchCache;
-  }
-
-  if (cacheLoadingPromise) {
-    return cacheLoadingPromise;
-  }
-
-  cacheLoadingPromise = (async () => {
-    try {
-      await initDb();
-      const db = getDb();
-      const t0 = performance.now();
-
-      // Глобальный санитарный фильтр: отсекаем весь мусор прямо на уровне SQL
-      const res = await db.execute(`
-        SELECT 
-          id, title, author, narrator, genre, year, rating,
-          votes_count, duration_seconds, duration_formatted,
-          cover_url, short_description, is_featured, created_at
-        FROM books
-        WHERE narrator != 'Аудиофонд'
-          AND author NOT IN ('Популярный автор', 'Автор контента', 'Автор', 'Неизвестен', 'Русская классика')
-          AND cover_url NOT LIKE '%archive.org/services/img/%'
-          AND title NOT LIKE '01-%'
-          AND title NOT LIKE '00-%'
-          AND title NOT LIKE 'З Н А Т Ь%'
-          AND title NOT LIKE 'Искажающие%'
-          AND title NOT LIKE 'Последняя война%'
-          AND (chapters IS NULL OR (chapters NOT LIKE '%litres.ru/audiotrial%' AND chapters NOT LIKE '%/audiotrial/%'))
-      `);
-
-      if (res.rows.length > 0) {
-        memorySearchCache = res.rows.map(rowToSearchItem);
-        const elapsed = (performance.now() - t0).toFixed(1);
-        console.log(`⚡ [RAM Search Index] Мгновенный чистый индекс на ${memorySearchCache.length} книг загружен за ${elapsed} мс!`);
-        return memorySearchCache;
-      }
-    } catch (e) {
-      console.warn("Error loading memory search cache from DB:", e);
-    }
-    return [];
-  })();
-
-  return cacheLoadingPromise;
+/**
+ * SQLite LIKE для кириллицы регистрозависим, поэтому к слову добавляем
+ * варианты написания: «война» и «Война» дают одинаковый результат.
+ */
+function caseVariants(term: string): string[] {
+  const variants = new Set<string>();
+  if (term.length === 0) return [term];
+  variants.add(term);
+  variants.add(term[0].toUpperCase() + term.slice(1));
+  variants.add(term.toLowerCase());
+  return Array.from(variants);
 }
-
-const GENRE_KEYWORDS: Record<string, string[]> = {
-  "фантастика": ["фантастик", "сталкер", "фэнтези", "космос"],
-  "детективы": ["детектив", "триллер", "приключен", "расследован"],
-  "ужасы и мистика": ["ужас", "мистик", "хоррор"],
-  "психология": ["психолог", "философ", "бизнес", "саморазвит"],
-  "классика": ["классик", "литератур", "драма", "золотой фонд"],
-  "для детей": ["дет", "сказк"],
-};
 
 export async function getBookByIdFromDb(id: string): Promise<Audiobook | null> {
   try {
@@ -219,112 +150,153 @@ export async function getBooksFromDb(options?: {
   genre?: string;
   sort?: string;
   narrator?: string;
+  /**
+   * Не считать общее количество.
+   * COUNT(*) с фильтром по жанру не может использовать индекс и читает
+   * всю таблицу. Там, где число не нужно (похожие книги на странице книги),
+   * передавайте true — экономит секунды.
+   */
+  skipCount?: boolean;
 }): Promise<{ items: Audiobook[]; total: number }> {
   try {
     const page = Math.max(1, options?.page || 1);
-    const limit = Math.max(1, Math.min(100, options?.limit || 20));
+    const limit = Math.max(1, Math.min(500, options?.limit || 20));
     const offset = (page - 1) * limit;
 
-    const cache = await getMemorySearchCache();
-
-    if (cache && cache.length > 0) {
-      let results = cache;
-
-      if (options?.genre && options.genre !== "Все") {
-        const gTerm = options.genre.toLowerCase();
-        const keywords = GENRE_KEYWORDS[gTerm] || [gTerm];
-        results = results.filter((item) =>
-          keywords.some((kw) => item.genreLower.includes(kw))
-        );
-      }
-
-      if (options?.narrator && options.narrator !== "Все") {
-        results = results.filter((item) => item.narrator === options.narrator);
-      }
-
-      if (options?.search && options.search.trim().length > 0) {
-        const rawSearch = options.search.trim().toLowerCase();
-        const words = rawSearch.split(/\s+/).filter(Boolean);
-
-        if (words.length > 0) {
-          const matched: SearchIndexItem[] = [];
-          for (let i = 0; i < results.length; i++) {
-            const item = results[i];
-            let allMatch = true;
-            for (let w = 0; w < words.length; w++) {
-              const word = words[w];
-              if (
-                !item.titleLower.includes(word) &&
-                !item.authorLower.includes(word) &&
-                !item.narratorLower.includes(word)
-              ) {
-                allMatch = false;
-                break;
-              }
-            }
-            if (allMatch) {
-              matched.push(item);
-            }
-          }
-
-          // Релевантность: точное совпадение автора в начале -> наивысший приоритет
-          matched.sort((a, b) => {
-            const aAuthorStarts = a.authorLower.startsWith(rawSearch) ? 200 : (a.authorLower.includes(rawSearch) ? 100 : 0);
-            const bAuthorStarts = b.authorLower.startsWith(rawSearch) ? 200 : (b.authorLower.includes(rawSearch) ? 100 : 0);
-
-            const aTitleStarts = a.titleLower.startsWith(rawSearch) ? 80 : (a.titleLower.includes(rawSearch) ? 40 : 0);
-            const bTitleStarts = b.titleLower.startsWith(rawSearch) ? 80 : (b.titleLower.includes(rawSearch) ? 40 : 0);
-
-            const scoreA = aAuthorStarts + aTitleStarts;
-            const scoreB = bAuthorStarts + bTitleStarts;
-
-            if (scoreB !== scoreA) {
-              return scoreB - scoreA;
-            }
-            return b.votesCount - a.votesCount;
-          });
-
-          results = matched;
-        }
-      } else {
-        if (options?.sort === "rating") {
-          results = [...results].sort((a, b) => b.rating - a.rating);
-        } else if (options?.sort === "year_desc" || options?.sort === "newest") {
-          // Сортировка по новизне: недавно добавленные в каталог стоят первыми!
-          results = [...results].sort((a, b) => b.createdAt - a.createdAt);
-        } else if (options?.sort === "duration_desc") {
-          results = [...results].sort((a, b) => b.durationSeconds - a.durationSeconds);
-        } else if (options?.sort === "duration_asc") {
-          results = [...results].sort((a, b) => a.durationSeconds - b.durationSeconds);
-        } else {
-          results = [...results].sort((a, b) => b.votesCount - a.votesCount);
-        }
-      }
-
-      const total = results.length;
-      const slice = results.slice(offset, offset + limit);
-
-      return {
-        items: slice.map(searchItemToAudiobook),
-        total,
-      };
-    }
-
-    // Резервный запрос в БД
     await initDb();
     const db = getDb();
-    const countRes = await db.execute("SELECT COUNT(*) as cnt FROM books");
-    const total = Number(countRes.rows[0]?.cnt || 0);
+
+    const conditions: string[] = ["clean = 1"];
+    const args: (string | number)[] = [];
+
+    /*
+     * Жанр без LOWER(): функция в условии убивает возможность использовать
+     * индекс, и SQLite читал всю таблицу. Вместо этого перебираем варианты
+     * написания ключевого слова — как для поиска.
+     */
+    if (options?.genre && options.genre !== "Все") {
+      const gTerm = options.genre.toLowerCase();
+      const keywords = GENRE_KEYWORDS[gTerm] || [gTerm];
+      const genreClauses: string[] = [];
+      for (const kw of keywords) {
+        for (const variant of caseVariants(kw)) {
+          genreClauses.push("genre LIKE ?");
+          args.push(`%${variant}%`);
+        }
+      }
+      conditions.push(`(${genreClauses.join(" OR ")})`);
+    }
+
+    if (options?.narrator && options.narrator !== "Все") {
+      conditions.push("narrator = ?");
+      args.push(options.narrator);
+    }
+
+    const search = options?.search?.trim();
+
+    /*
+     * ПОИСК.
+     *
+     * Раньше здесь было три LIKE '%слово%' по title, author, narrator.
+     * Подстроку с обоих концов индекс не обслуживает, поэтому SQLite
+     * читал все 52 407 строк вместе с главами и описаниями — 636 МБ,
+     * и один поиск занимал десятки секунд.
+     *
+     * Теперь, если есть полнотекстовый индекс books_fts, поиск идёт по нему:
+     * это несколько мегабайт вместо всей базы. Если индекса нет — работает
+     * старый путь, чтобы ничего не сломать.
+     */
+    let usedFts = false;
+
+    if (search) {
+      usedFts = await hasFtsIndex();
+      if (usedFts) {
+        conditions.push("rowid IN (SELECT rowid FROM books_fts WHERE books_fts MATCH ?)");
+        args.push(toFtsQuery(search));
+      } else {
+        const words = search.split(/\s+/).filter(Boolean);
+        for (const word of words) {
+          const ors: string[] = [];
+          for (const variant of caseVariants(word)) {
+            ors.push("title LIKE ?", "author LIKE ?", "narrator LIKE ?");
+            args.push(`%${variant}%`, `%${variant}%`, `%${variant}%`);
+          }
+          conditions.push(`(${ors.join(" OR ")})`);
+        }
+      }
+    }
+
+    let orderBy = "votes_count DESC";
+    switch (options?.sort) {
+      case "rating":
+        orderBy = "rating DESC, votes_count DESC";
+        break;
+      case "newest":
+      case "year_desc":
+        orderBy = "created_at DESC";
+        break;
+      case "duration":
+      case "duration_desc":
+        orderBy = "duration_seconds DESC";
+        break;
+      case "duration_asc":
+        orderBy = "duration_seconds ASC";
+        break;
+      default:
+        orderBy = "votes_count DESC";
+    }
+
+    // Аргументы WHERE и ORDER BY раздельно: COUNT(*) не содержит ORDER BY
+    const whereArgs = [...args];
+    const orderArgs: string[] = [];
+
+    /*
+     * Поиск без полнотекстового индекса сортировал ещё и по «точности»:
+     * совпадение в авторе выше, чем в названии. Для этого в ORDER BY шли
+     * два LIKE. С индексом это не нужно — и лишние LIKE по всей таблице
+     * тоже исчезают.
+     */
+    if (search && !usedFts) {
+      const first = search.split(/\s+/)[0];
+      orderArgs.push(`${first}%`, `${first}%`);
+      orderBy = `
+        CASE
+          WHEN author LIKE ? THEN 2
+          WHEN title LIKE ? THEN 1
+          ELSE 0
+        END DESC, ${orderBy}
+      `;
+    }
+
+    const whereSql = `WHERE ${conditions.join(" AND ")}`;
 
     const dataRes = await db.execute({
-      sql: "SELECT * FROM books ORDER BY votes_count DESC LIMIT ? OFFSET ?",
-      args: [limit, offset],
+      sql: `SELECT
+              id, title, author, narrator, genre, year, rating,
+              votes_count, duration_seconds, duration_formatted,
+              cover_url, short_description, is_featured, created_at
+            FROM books
+            ${whereSql}
+            ORDER BY ${orderBy}
+            LIMIT ? OFFSET ?`,
+      args: [...whereArgs, ...orderArgs, limit, offset],
     });
 
-    return {
-      items: dataRes.rows.map(fullRowToAudiobook),
-      total,
-    };
+    const items = dataRes.rows.map(fullRowToAudiobook);
+
+    if (options?.skipCount) {
+      // Число не нужно: отдаём «не меньше, чем нашли» — этого хватает
+      // вызывающему коду, который просто берёт первые N книг.
+      return { items, total: offset + items.length };
+    }
+
+    const countRes = await db.execute({
+      sql: `SELECT COUNT(*) AS cnt FROM books ${whereSql}`,
+      args: whereArgs,
+    });
+    const total = Number(countRes.rows[0]?.cnt || 0);
+
+    return { items, total };
   } catch (e) {
     console.warn("DB query error:", e);
     return { items: [], total: 0 };
@@ -345,9 +317,9 @@ export async function insertBookIntoDb(book: Audiobook) {
     args: [
       book.id,
       book.title,
-      book.author,
-      book.narrator,
-      book.genre,
+      book.author || DEFAULT_AUTHOR,
+      book.narrator || DEFAULT_NARRATOR,
+      book.genre || DEFAULT_GENRE,
       book.year || 1900,
       book.rating || 9.5,
       book.narratorRating || 9.7,
@@ -358,7 +330,8 @@ export async function insertBookIntoDb(book: Audiobook) {
       book.durationFormatted || "1 ч 00 мин",
       book.bitrate || "192 kbps, MP3 Stereo",
       book.fileSize || "150 МБ",
-      book.coverUrl || "",
+      // та же защита на записи: base64-обложка не попадёт в базу снова
+      sanitizeCoverUrl(book.coverUrl),
       book.shortDescription || "",
       book.description || "",
       book.isFeatured ? 1 : 0,
@@ -371,6 +344,4 @@ export async function insertBookIntoDb(book: Audiobook) {
       Date.now(),
     ],
   });
-
-  memorySearchCache = null;
 }

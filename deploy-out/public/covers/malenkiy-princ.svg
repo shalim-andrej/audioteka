@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-grad-malenkiy-princ" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141c38"/>
+      <stop offset="60%" stop-color="#070a14"/>
+      <stop offset="100%" stop-color="#020305"/>
+    </linearGradient>
+
+    <!-- Golden Spine Shadow -->
+    <linearGradient id="spine-shadow-malenkiy-princ" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="15%" stop-color="#FFFFFF" stop-opacity="0.03"/>
+      <stop offset="85%" stop-color="#000000" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.75"/>
+    </linearGradient>
+
+    <!-- Gold Accent Gradient -->
+    <linearGradient id="accent-grad-malenkiy-princ" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="400" height="600" fill="url(#bg-grad-malenkiy-princ)"/>
+
+  <!-- Ornate Decorative Outer & Inner Border -->
+  <rect x="18" y="18" width="364" height="564" rx="12" fill="none" stroke="#F59E0B" stroke-width="1.5" stroke-opacity="0.45"/>
+  <rect x="24" y="24" width="352" height="552" rx="8" fill="none" stroke="#F59E0B" stroke-width="0.8" stroke-dasharray="4,3" stroke-opacity="0.35"/>
+
+  <!-- Corner Flourishes -->
+  <path d="M 24 40 L 40 40 L 40 24" fill="none" stroke="#F59E0B" stroke-width="2"/>
+  <path d="M 376 40 L 360 40 L 360 24" fill="none" stroke="#F59E0B" stroke-width="2"/>
+  <path d="M 24 560 L 40 560 L 40 576" fill="none" stroke="#F59E0B" stroke-width="2"/>
+  <path d="M 376 560 L 360 560 L 360 576" fill="none" stroke="#F59E0B" stroke-width="2"/>
+
+  <!-- Top Badge: Audiobook & Series -->
+  <g transform="translate(200, 48)">
+    <rect x="-80" y="-14" width="160" height="22" rx="11" fill="#F59E0B" fill-opacity="0.15" stroke="#F59E0B" stroke-width="1"/>
+    <text x="0" y="2" font-family="'Manrope', system-ui, sans-serif" font-size="9" font-weight="800" fill="#FDE68A" text-anchor="middle" letter-spacing="2">АУДИОКНИГА • PRO</text>
+  </g>
+
+  <!-- Subtitle Badge -->
+  <text x="200" y="80" font-family="'Manrope', system-ui, sans-serif" font-size="10" font-weight="700" fill="#F59E0B" text-anchor="middle" letter-spacing="2.5">ШЕДЕВР НА ВСЕ ВРЕМЕНА</text>
+
+  <!-- Author Name -->
+  <text x="200" y="105" font-family="'Manrope', system-ui, sans-serif" font-size="13" font-weight="800" fill="#FDE68A" text-anchor="middle" letter-spacing="3">АНТУАН ДЕ СЕНТ-ЭКЗЮПЕРИ</text>
+
+  <!-- Title Lines -->
+  <text x="200" y="135" font-family="Georgia, serif" font-size="21" font-weight="800" fill="#FFFFFF" text-anchor="middle" letter-spacing="1">МАЛЕНЬКИЙ ПРИНЦ</text>
+
+
+  <!-- Decorative Separator Line -->
+  <g transform="translate(200, 190)">
+    <line x1="-70" y1="0" x2="70" y2="0" stroke="#F59E0B" stroke-width="1" stroke-opacity="0.5"/>
+    <polygon points="0,-4 4,0 0,4 -4,0" fill="#F59E0B"/>
+  </g>
+
+  <!-- Book Art / Vector Centerpiece -->
+  <g>
+    
+        <!-- Asteroid, Prince, Rose in Glass Cloche -->
+        <!-- Asteroid B-612 -->
+        <circle cx="200" cy="360" r="80" fill="#0a1024" stroke="#F59E0B" stroke-width="2"/>
+        <!-- Rose under glass -->
+        <path d="M 190 280 C 190 260 210 260 210 280 Z" fill="none" stroke="#FDE68A" stroke-width="2"/>
+        <rect x="187" y="280" width="26" height="3" rx="1" fill="#F59E0B"/>
+        <circle cx="200" cy="272" r="5" fill="#EF4444"/>
+        <!-- Stars -->
+        <circle cx="150" cy="230" r="3" fill="#FDE68A"/>
+        <circle cx="240" cy="220" r="2" fill="#FDE68A"/>
+        <circle cx="160" cy="270" r="2" fill="#FDE68A"/>
+        <circle cx="250" cy="265" r="3" fill="#FDE68A"/>
+        <!-- Little Prince scarf silhouette -->
+        <circle cx="175" cy="265" r="7" fill="#F59E0B"/>
+        <polygon points="172,272 178,272 176,285 168,285" fill="#F59E0B"/>
+        <path d="M 176 273 Q 160 270 150 262" stroke="#FDE68A" stroke-width="3" fill="none"/>
+        
+  </g>
+
+  <!-- Lower Divider -->
+  <g transform="translate(200, 395)">
+    <line x1="-90" y1="0" x2="90" y2="0" stroke="#F59E0B" stroke-width="1" stroke-opacity="0.4"/>
+    <circle cx="0" cy="0" r="3" fill="#F59E0B"/>
+  </g>
+
+  <!-- Genre Tag -->
+  <text x="200" y="420" font-family="'Manrope', system-ui, sans-serif" font-size="10" font-weight="700" fill="#F59E0B" text-anchor="middle" letter-spacing="2.5">СКАЗКА-ПРИТЧА</text>
+
+  <!-- Narrator Info Block -->
+  <g transform="translate(200, 455)">
+    <rect x="-120" y="-18" width="240" height="38" rx="10" fill="#000000" fill-opacity="0.65" stroke="#F59E0B" stroke-width="1" stroke-opacity="0.3"/>
+    
+    <!-- Mini Microphone Icon -->
+    <path d="M -102 -3 C -102 -7 -99 -10 -95 -10 C -91 -10 -88 -7 -88 -3 L -88 2 C -88 6 -91 9 -95 9 C -99 9 -102 6 -102 2 Z" fill="#F59E0B"/>
+    <path d="M -105 1 C -105 7 -95 12 -95 12 C -95 12 -85 7 -85 1" fill="none" stroke="#F59E0B" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="-95" y1="12" x2="-95" y2="16" stroke="#F59E0B" stroke-width="1.5"/>
+
+    <text x="-76" y="-3" font-family="'Manrope', system-ui, sans-serif" font-size="9" font-weight="600" fill="#94A3B8">Читает мастер слова:</text>
+    <text x="-76" y="11" font-family="'Manrope', system-ui, sans-serif" font-size="12" font-weight="800" fill="#FFFFFF">Константин Хабенский</text>
+  </g>
+
+  <!-- Quality Stamp / Footnote -->
+  <g transform="translate(200, 525)">
+    <text x="0" y="0" font-family="'Manrope', system-ui, sans-serif" font-size="9" font-weight="700" fill="#64748B" text-anchor="middle" letter-spacing="1.5">ПОЛНАЯ ВЕРСИЯ • БЕЗ СОКРАЩЕНИЙ</text>
+    <text x="0" y="16" font-family="'Manrope', system-ui, sans-serif" font-size="9" font-weight="800" fill="#F59E0B" text-anchor="middle" letter-spacing="2">СТУДИЙНОЕ КАЧЕСТВО 192 KBPS</text>
+  </g>
+
+  <!-- Spine 3D Book Shadow Effect -->
+  <rect x="0" y="0" width="28" height="600" fill="url(#spine-shadow-malenkiy-princ)"/>
+</svg>
