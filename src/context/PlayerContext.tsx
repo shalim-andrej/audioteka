@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Audiobook, Chapter, Bookmark } from "@/lib/types";
 import { reachMetrikaGoal } from "@/components/YandexMetrika";
+import { getBook } from "@/lib/actions/audiobooks";
 
 interface PlayerContextType {
   currentBook: Audiobook | null;
@@ -38,6 +39,8 @@ interface PlayerContextType {
   removeBookmark: (id: string) => void;
   jumpToBookmark: (bm: Bookmark, allBooks: Audiobook[]) => void;
   resumeLastListened: () => void;
+  /** удаляет записи истории по списку ID (для «мёртвых» книг) */
+  removeHistoryEntries: (bookIds: string[]) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null);
@@ -235,10 +238,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     let fullBook = book;
     if (!fullBook.chapters || fullBook.chapters.length === 0) {
       try {
-        const res = await fetch(`/api/audiobooks/${book.id}`);
-        const data = await res.json();
-        if (data.success && data.item && Array.isArray(data.item.chapters) && data.item.chapters.length > 0) {
-          fullBook = data.item;
+        // Server Action вместо fetch('/api/audiobooks/<id>'):
+        // Next.js сам отправляет POST на сервер, выполняет getBook,
+        // возвращает Audiobook | null. Меньше кода, типобезопасно, кэшируется.
+        const fullBookData = await getBook(book.id);
+        if (fullBookData && Array.isArray(fullBookData.chapters) && fullBookData.chapters.length > 0) {
+          fullBook = fullBookData;
         }
       } catch (e) {
         console.warn("Не удалось загрузить главы книги:", e);
@@ -511,6 +516,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (lastListened) playBook(lastListened.book, lastListened.chapterIndex, lastListened.timeSec);
   }, [lastListened, playBook]);
 
+  /**
+   * Удаляет записи истории по списку ID.
+   * Нужен, чтобы чистить «мёртвые» записи: книга удалена из базы,
+   * а в истории остался её ID.
+   */
+  const removeHistoryEntries = useCallback((bookIds: string[]) => {
+    if (bookIds.length === 0) return;
+    const removeSet = new Set(bookIds);
+    setHistory((prev) => {
+      const updated = prev.filter((h) => !removeSet.has(h.bookId));
+      if (updated.length === prev.length) return prev;
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+
   // Горячие клавиши
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -632,13 +653,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     removeBookmark,
     jumpToBookmark,
     resumeLastListened,
+    removeHistoryEntries,
   }), [
     currentBook, currentChapter, currentChapterIndex, isPlaying, currentTime, duration,
     playbackRate, volume, isMuted, isExpanded, sleepTimer, sleepMode,
     history, bookmarks, isVoiceBoost, lastListened,
     playBook, togglePlay, seek, skipTime, setRate, setVol, toggleMute, nextChapter,
     prevChapter, setSleep, closePlayer, toggleVoiceBoost, addBookmark, removeBookmark,
-    jumpToBookmark, resumeLastListened,
+    jumpToBookmark, resumeLastListened, removeHistoryEntries,
   ]);
 
   // Отдельное значение для карточек: меняется только при play/pause,
