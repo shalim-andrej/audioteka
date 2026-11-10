@@ -4,10 +4,18 @@
 import React, { useState, useOptimistic, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { MessageSquare, Star, ThumbsUp, ShieldAlert } from "lucide-react";
 import type { Comment } from "@/lib/types";
 import { addComment } from "@/lib/actions/comments";
-import { commentSchema, type CommentInput } from "@/lib/validations/comments";
+import { commentSchema } from "@/lib/validations/comments";
+
+/**
+ * z.input — тип ДО применения .default() (то, что вводит пользователь).
+ * z.output — тип ПОСЛЕ (то, что получает сервер).
+ * useForm работает с вводом, поэтому используем z.input.
+ */
+type CommentFormInput = z.input<typeof commentSchema>;
 
 interface CommentsTabProps {
   bookId: string;
@@ -28,18 +36,13 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
 
   const [isPending, startTransition] = useTransition();
 
-  /**
-   * React Hook Form + zod.
-   * mode: "onChange" — валидация при каждом изменении поля
-   * (нужно для тестов и для UX: ошибка видна сразу, а не после submit).
-   */
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
     setValue,
-  } = useForm<CommentInput>({
+  } = useForm<CommentFormInput>({
     resolver: zodResolver(commentSchema),
     defaultValues: {
       bookId,
@@ -60,7 +63,7 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
     const user = (data.user ?? "").trim() || "Слушатель PRO";
     const text = data.text.trim();
     const rating = data.rating;
-    const isSpoiler = data.isSpoiler;
+    const isSpoiler = data.isSpoiler ?? false;
 
     const optimisticComment: Comment = {
       id: "temp-" + Date.now(),

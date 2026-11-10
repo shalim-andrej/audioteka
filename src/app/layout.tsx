@@ -1,19 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { PlayerProvider } from "@/context/PlayerContext";
-import AudioPlayerBar from "@/components/AudioPlayerBar";
-
-/*
- * ВАЖНО: adjustFontFallback у next/font/local принимает ТОЛЬКО
- * false | "Arial" | "Times New Roman" — иначе сборка падает.
- *
- * Ниже — конфигурация под реальные файлы проекта:
- *   src/app/fonts/fonts/inter/inter-400.woff2
- *   src/app/fonts/fonts/inter/inter-700.woff2
- *   src/app/fonts/fonts/playfair-display/playfair-display-400.woff2
- *   src/app/fonts/fonts/playfair-display/playfair-display-700.woff2
- */
+import ClientAudioPlayer from "@/components/ClientAudioPlayer";
+import PwaRegister from "@/components/PwaRegister";
+import Providers from "./providers";
 
 const inter = localFont({
   src: [
@@ -34,8 +25,6 @@ const playfair = localFont({
   ],
   variable: "--font-playfair",
   display: "swap",
-  // preload: true — иначе при display:"swap" заголовки сначала рисуются
-  // fallback-шрифтом и подменяются, давая вклад в CLS
   preload: true,
   adjustFontFallback: "Times New Roman",
   fallback: ["Georgia", "Times New Roman", "serif"],
@@ -45,6 +34,27 @@ export const metadata: Metadata = {
   title: "Аудиотека PRO — Слушайте книги онлайн",
   description:
     "Каталог аудиокниг: описания, чтецы, длительность и переход к прослушиванию на Литрес.",
+  applicationName: "Аудиотека PRO",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Аудиотека PRO",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#06080D",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({
@@ -55,17 +65,13 @@ export default function RootLayout({
   return (
     <html lang="ru" className={`${inter.variable} ${playfair.variable}`}>
       <body className="bg-[#06080D] text-white antialiased">
-        <PlayerProvider>
-          {children}
-          {/*
-            Полоса плеера внизу страницы.
-            Раньше AudioPlayerBar не был отрисован нигде: он существовал как
-            компонент, но в дерево не попадал. Поэтому звук запускался,
-            а увидеть, какая книга играет, было нельзя.
-            Сам компонент возвращает null, пока ничего не воспроизводится.
-          */}
-          <AudioPlayerBar />
-        </PlayerProvider>
+        <Providers>
+          <PlayerProvider>
+            {children}
+            <ClientAudioPlayer />
+          </PlayerProvider>
+        </Providers>
+        <PwaRegister />
       </body>
     </html>
   );

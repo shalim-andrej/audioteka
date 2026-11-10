@@ -22,6 +22,7 @@ import { usePlayerUi } from "@/context/PlayerContext";
 import { useFavoritesStore } from "@/store/favorites";
 import { Audiobook } from "@/lib/types";
 import { reachMetrikaGoal } from "@/components/YandexMetrika";
+import { useQuery } from "@tanstack/react-query";
 
 const InstallPwaModal = dynamic(() => import("@/components/InstallPwaModal"), {
   ssr: false,
@@ -84,43 +85,43 @@ export default function Header({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const [matchingBooks, setMatchingBooks] = useState<Audiobook[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  /**
+   * Поиск через useQuery:
+   *  - enabled: запускается только когда есть запрос (>= 2 символов),
+   *  - queryKey: ["search", activeSearch] — кэш по каждому запросу,
+   *  - staleTime: 30_000 — 30 секунд не повторять запрос.
+   * Дебаунс делаем через отдельный state debouncedQuery + useEffect с setTimeout.
+   */
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   useEffect(() => {
     const q = activeSearch.trim();
-    if (!q) {
-      setMatchingBooks([]);
-      setIsSearching(false);
+    if (q.length < 2) {
+      setDebouncedQuery("");
       return;
     }
-
-    setIsSearching(true);
-    const controller = new AbortController();
-
-    const debounceTimer = setTimeout(() => {
+    const t = setTimeout(() => {
+      setDebouncedQuery(q);
       reachMetrikaGoal("search", { query: q });
-      fetch(`/api/audiobooks?search=${encodeURIComponent(q)}&limit=5`, {
-        signal: controller.signal,
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && Array.isArray(data.items)) setMatchingBooks(data.items);
-          else setMatchingBooks([]);
-          setIsSearching(false);
-        })
-        .catch(() => {
-          if (controller.signal.aborted) return;
-          setMatchingBooks([]);
-          setIsSearching(false);
-        });
-    }, 200);
-
-    return () => {
-      clearTimeout(debounceTimer);
-      controller.abort();
-    };
+    }, 300);
+    return () => clearTimeout(t);
   }, [activeSearch]);
+
+  const {
+    data: matchingBooks = [],
+    isFetching: isSearching,
+  } = useQuery<Audiobook[]>({
+    queryKey: ["search", debouncedQuery],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/audiobooks?search=${encodeURIComponent(debouncedQuery)}&limit=5`
+      );
+      const data = await res.json();
+      return Array.isArray(data.items) ? data.items : [];
+    },
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30_000,
+  });
 
   const handleInputChange = (val: string) => {
     if (propOnSearchChange) propOnSearchChange(val);
@@ -192,10 +193,6 @@ export default function Header({
     if (lastItem) playBook(lastItem.book, lastItem.chapterIndex, lastItem.progressSec);
   };
 
-  /**
-   * Форма поиска. variant нужен, чтобы у desktop и mobile были РАЗНЫЕ id
-   * (иначе Lighthouse ругается «id должен быть уникальным» и «нет name»).
-   */
   const renderSearchForm = (variant: "desktop" | "mobile") => {
     const inputId = `search-${variant}`;
     const inputName = `search`;
