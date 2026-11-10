@@ -2,11 +2,12 @@
 "use client";
 
 import React, { useState } from "react";
+import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { store } from "@/lib/redux/store";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  // useState с функцией-инициализатором: QueryClient создаётся один раз
-  // за всё время жизни приложения (не на каждый рендер).
+  // QueryClient создаётся один раз за всё время жизни приложения.
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -22,6 +23,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </Provider>
   );
 }

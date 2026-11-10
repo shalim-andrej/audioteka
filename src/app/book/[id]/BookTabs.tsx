@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import { BookOpen, Headphones, MessageSquare, Mic } from "lucide-react";
 import type { Comment } from "@/lib/types";
 import CommentsTab from "./CommentsTab";
@@ -16,7 +17,6 @@ interface BookTabsProps {
   narrationsCount: number;
   initialCommentsCount: number;
   initialComments: Comment[];
-  /** Содержимое вкладок «about», «chapters», «narrations» (серверный JSX) */
   aboutContent: React.ReactNode;
   chaptersContent: React.ReactNode;
   narrationsContent: React.ReactNode;
@@ -70,16 +70,31 @@ export default function BookTabs({
         </Link>
       </div>
 
-      {tab === "about" && aboutContent}
-      {tab === "chapters" && chaptersContent}
-      {tab === "narrations" && narrationsContent}
-      {tab === "comments" && (
-        <CommentsTab
-          bookId={bookId}
-          initialComments={initialComments}
-          onCommentAdded={() => setCommentsCount((n) => n + 1)}
-        />
-      )}
+      {/*
+        AnimatePresence mode="wait" — новая вкладка ждёт, пока старая
+        завершит exit-анимацию. Без этого две вкладки рендерятся одновременно
+        и «прыгают».
+      */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          {tab === "about" && aboutContent}
+          {tab === "chapters" && chaptersContent}
+          {tab === "narrations" && narrationsContent}
+          {tab === "comments" && (
+            <CommentsTab
+              bookId={bookId}
+              initialComments={initialComments}
+              onCommentAdded={() => setCommentsCount((n) => n + 1)}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

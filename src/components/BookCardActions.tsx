@@ -5,36 +5,23 @@ import React from "react";
 import { Play, Pause, Heart, Headphones } from "lucide-react";
 import { Audiobook } from "@/lib/types";
 import { usePlayerUi } from "@/context/PlayerContext";
-import { useFavoritesStore } from "@/store/favorites";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hooks";
+import { toggleFavorite } from "@/lib/redux/features/favorites/favoritesSlice";
 
 /**
  * Единственный клиентский островок карточки.
+ * Гидратируются только сердечко, кнопка play и плашка «Сейчас играет».
  *
- * Раньше вся карточка была клиентским компонентом: 12 карточек на первом
- * экране — это 12 подписок на контекст плеера и 12 подписок на стор
- * избранного, которые браузер обязан поднять при гидратации.
- *
- * Теперь разметка карточки серверная, а гидратируются только эти три
- * элемента: сердечко, кнопка play и плашка «Сейчас играет».
+ * Сердечко теперь работает через Redux (вместо Zustand) — для практики RTK.
  */
 export default function BookCardActions({ book }: { book: Audiobook }) {
   const { currentBookId, isPlaying, playBook, togglePlay } = usePlayerUi();
 
-  /*
-   * ВАЖНО: подписка именно на массив favorites, а не только на функцию.
-   * Если подписаться на state.isFavorite, ссылка на функцию не меняется
-   * при добавлении книги, компонент не перерисовывается — и сердечко
-   * остаётся серым, хотя книга в избранное уже попала.
-   * Массив меняет ссылку на каждом изменении, поэтому перерисовка идёт.
-   */
-  const favorites = useFavoritesStore((state) => state.favorites);
-  const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
-  const isFavorite = useFavoritesStore((state) => state.isFavorite);
+  const dispatch = useAppDispatch();
+  const favoriteIds = useAppSelector((state) => state.favorites.ids);
+  const isFav = favoriteIds.includes(book.id);
 
   const isThisBookPlaying = currentBookId === book.id && isPlaying;
-  const isFav = isFavorite(book.id);
-
-  void favorites;
 
   const handlePlayClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -49,7 +36,7 @@ export default function BookCardActions({ book }: { book: Audiobook }) {
   const handleFavClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleFavorite(book.id);
+    dispatch(toggleFavorite(book.id));
   };
 
   return (

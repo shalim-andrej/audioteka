@@ -1,7 +1,10 @@
 // src/components/BookCard.test.tsx
+import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { Provider } from "react-redux";
+import { configureStore } from "@reduxjs/toolkit";
 import BookCard from "./BookCard";
-import { useFavoritesStore } from "../store/favorites";
+import favoritesReducer from "@/lib/redux/features/favorites/favoritesSlice";
 import { Audiobook } from "../lib/types";
 
 // BookCardActions использует usePlayerUi (не usePlayer!)
@@ -37,48 +40,63 @@ const mockBook: Audiobook = {
   durationSeconds: 0,
 };
 
-describe("BookCard Component", () => {
-  beforeEach(() => {
-    useFavoritesStore.setState({ favorites: [] });
+/**
+ * renderWithRedux — оборачивает компонент в Redux Provider
+ * со СВЕЖИМ store на каждый тест. Так состояние не течёт между тестами.
+ */
+function renderWithRedux(ui: React.ReactElement) {
+  const store = configureStore({
+    reducer: { favorites: favoritesReducer },
+    preloadedState: { favorites: { ids: [] } },
   });
+  const result = render(<Provider store={store}>{ui}</Provider>);
+  return { ...result, store };
+}
 
+describe("BookCard Component", () => {
   it("отображает информацию о книге", () => {
-    render(<BookCard book={mockBook} />);
+    renderWithRedux(<BookCard book={mockBook} />);
     expect(screen.getByText("Тестовая аудиокнига")).toBeInTheDocument();
     expect(screen.getByText("Тестовый Автор")).toBeInTheDocument();
     expect(screen.getByText(/Тестовый Чтец/)).toBeInTheDocument();
   });
 
   it("отображает ссылку на книгу в заголовке (stretched link)", () => {
-    render(<BookCard book={mockBook} />);
+    renderWithRedux(<BookCard book={mockBook} />);
     const heading = screen.getByRole("heading", { name: /тестовая аудиокнига/i });
-    // <Link> вокруг h3 — stretched link. Проверяем, что внутри есть <a> с href.
     const link = heading.closest("a");
     expect(link).not.toBeNull();
     expect(link).toHaveAttribute("href", "/book/book-test-1");
   });
 
   it("добавляет книгу в избранное при клике на сердечко", () => {
-    render(<BookCard book={mockBook} />);
+    const { store } = renderWithRedux(<BookCard book={mockBook} />);
     const favoriteButton = screen.getByRole("button", {
       name: /добавить в избранное/i,
     });
     fireEvent.click(favoriteButton);
-    expect(useFavoritesStore.getState().favorites).toContain(mockBook.id);
+    expect(store.getState().favorites.ids).toContain(mockBook.id);
   });
 
   it("удаляет книгу из избранного при повторном клике", () => {
-    useFavoritesStore.setState({ favorites: [mockBook.id] });
-    render(<BookCard book={mockBook} />);
+    const store = configureStore({
+      reducer: { favorites: favoritesReducer },
+      preloadedState: { favorites: { ids: [mockBook.id] } },
+    });
+    render(
+      <Provider store={store}>
+        <BookCard book={mockBook} />
+      </Provider>
+    );
     const favoriteButton = screen.getByRole("button", {
       name: /удалить из избранного/i,
     });
     fireEvent.click(favoriteButton);
-    expect(useFavoritesStore.getState().favorites).not.toContain(mockBook.id);
+    expect(store.getState().favorites.ids).not.toContain(mockBook.id);
   });
 
   it("кнопка избранного имеет aria-pressed", () => {
-    render(<BookCard book={mockBook} />);
+    renderWithRedux(<BookCard book={mockBook} />);
     const favoriteButton = screen.getByRole("button", {
       name: /добавить в избранное/i,
     });
@@ -86,8 +104,15 @@ describe("BookCard Component", () => {
   });
 
   it("кнопка избранного меняет aria-pressed на true, если книга в избранном", () => {
-    useFavoritesStore.setState({ favorites: [mockBook.id] });
-    render(<BookCard book={mockBook} />);
+    const store = configureStore({
+      reducer: { favorites: favoritesReducer },
+      preloadedState: { favorites: { ids: [mockBook.id] } },
+    });
+    render(
+      <Provider store={store}>
+        <BookCard book={mockBook} />
+      </Provider>
+    );
     const favoriteButton = screen.getByRole("button", {
       name: /удалить из избранного/i,
     });
