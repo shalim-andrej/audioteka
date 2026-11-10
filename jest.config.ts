@@ -14,6 +14,21 @@ const config: Config = {
   coverageProvider: "v8",
   testEnvironment: "jsdom",
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+
+  // Исключаем из тестов папки, где тестов быть не должно:
+  // node_modules, .next, deploy-out (копия сборки), coverage.
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/.next/',
+    '/deploy-out/',
+    '/coverage/',
+  ],
+
+  // Явный маппинг алиасов из tsconfig.json.
+  // Без него Jest иногда не подхватывает "@/..." автоматически.
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
 };
 
 export default createJestConfig(config);
