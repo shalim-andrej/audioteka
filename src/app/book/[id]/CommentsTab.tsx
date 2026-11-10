@@ -21,33 +21,37 @@ export default function CommentsTab({ bookId, initialComments }: CommentsTabProp
   const [newCommentRating, setNewCommentRating] = useState(10);
   const [newCommentSpoiler, setNewCommentSpoiler] = useState(false);
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  /*
-   * useOptimistic: показываем новый комментарий СРАЗУ, не дожидаясь ответа
-   * сервера. Если запрос упадёт — React автоматически откатит состояние
-   * к предыдущему (commentList без нового комментария).
-   */
   const [optimisticComments, addOptimisticComment] = useOptimistic<
     Comment[],
     Comment
   >(commentList, (current, newComment) => [newComment, ...current]);
 
-  /*
-   * useTransition: флаг «идёт серверный запрос». Можно показать спиннер
-   * или disabled на кнопке. Не блокирует UI (в отличие от useState).
-   */
   const [isPending, startTransition] = useTransition();
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCommentText.trim() || isPending) return;
+    if (isPending) return;
+
+    // Сбрасываем ошибки
+    setFormError(null);
+    setFieldErrors({});
+
+    // Клиентская проверка минимума — чтобы не дёргать сервер зря.
+    // Сервер проверит всё равно (zod), но UX лучше с мгновенной ошибкой.
+    const trimmedText = newCommentText.trim();
+    if (trimmedText.length < 3) {
+      setFieldErrors({ text: "Комментарий должен быть не короче 3 символов" });
+      return;
+    }
 
     const user = newCommentAuthor.trim() || "Слушатель PRO";
-    const text = newCommentText.trim();
+    const text = trimmedText;
     const rating = newCommentRating;
     const isSpoiler = newCommentSpoiler;
 
-    // Временный объект: показывается сразу, потом заменится на настоящий.
     const optimisticComment: Comment = {
       id: "temp-" + Date.now(),
       user,
@@ -59,30 +63,37 @@ export default function CommentsTab({ bookId, initialComments }: CommentsTabProp
       isSpoiler,
     };
 
-    // Сбрасываем форму сразу — чтобы не было «залипания».
     setNewCommentText("");
     setNewCommentSpoiler(false);
 
     startTransition(async () => {
       addOptimisticComment(optimisticComment);
       try {
-        const realComment = await addComment({
+        const result = await addComment({
           bookId,
           user,
           text,
           rating,
           isSpoiler,
         });
-        // Заменяем временный комментарий настоящим (с реальным ID и датой).
-        setCommentList((prev) => [
-          realComment,
-          ...prev.filter((c) => c.id !== optimisticComment.id),
-        ]);
+
+        if (result.success) {
+          setCommentList((prev) => [
+            result.comment,
+            ...prev.filter((c) => c.id !== optimisticComment.id),
+          ]);
+        } else {
+          // Сервер вернул ошибку валидации — откат, показ ошибок
+          setFormError(result.error);
+          if (result.fieldErrors) setFieldErrors(result.fieldErrors);
+          setNewCommentText(text);
+          setNewCommentSpoiler(isSpoiler);
+        }
       } catch (err) {
         console.error("Не удалось отправить комментарий:", err);
-        // Откат: useOptimistic сам уберёт optimisticComment из optimistic-состояния.
-        // В commentList (real state) ничего не менялось, так что откат чистый.
-        setNewCommentText(text); // возвращаем текст в форму, чтобы не потерять
+        setFormError("Не удалось отправить комментарий. Попробуйте ещё раз.");
+        setNewCommentText(text);
+        setNewCommentSpoiler(isSpoiler);
       }
     });
   };
@@ -102,37 +113,58 @@ export default function CommentsTab({ bookId, initialComments }: CommentsTabProp
           Оставить отзыв об аудиокниге
         </h4>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input
-            type="text"
-            value={newCommentAuthor}
-            onChange={(e) => setNewCommentAuthor(e.target.value)}
-            placeholder="Ваше имя (или никнейм)"
-            className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-[#F59E0B]"
-          />
+        {formError && (
+          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs">
+            {formError}
+          </div>
+        )}
 
-          <div className="flex items-center justify-between bg-white/5 border border-white/10 px-4 py-2 rounded-xl text-xs">
-            <span className="text-gray-400">Ваша оценка:</span>
-            <select
-              value={newCommentRating}
-              onChange={(e) => setNewCommentRating(Number(e.target.value))}
-              className="bg-transparent text-[#F59E0B] font-bold focus:outline-none cursor-pointer"
-            >
-              <option value={10}>10 / 10 ★ Шедевр</option>
-              <option value={9}>9 / 10 ★ Отлично</option>
-              <option value={8}>8 / 10 ★ Очень хорошо</option>
-              <option value={7}>7 / 10 ★ Хорошо</option>
-            </select>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <input
+              type="text"
+              value={newCommentAuthor}
+              onChange={(e) => setNewCommentAuthor(e.target.value)}
+              placeholder="Ваше имя (или никнейм)"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-[#F59E0B]"
+            />
+            {fieldErrors.user && (
+              <p className="text-[10px] text-red-400 mt-1">{fieldErrors.user}</p>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between bg-white/5 border border-white/10 px-4 py-2 rounded-xl text-xs">
+              <span className="text-gray-400">Ваша оценка:</span>
+              <select
+                value={newCommentRating}
+                onChange={(e) => setNewCommentRating(Number(e.target.value))}
+                className="bg-transparent text-[#F59E0B] font-bold focus:outline-none cursor-pointer"
+              >
+                <option value={10}>10 / 10 ★ Шедевр</option>
+                <option value={9}>9 / 10 ★ Отлично</option>
+                <option value={8}>8 / 10 ★ Очень хорошо</option>
+                <option value={7}>7 / 10 ★ Хорошо</option>
+              </select>
+            </div>
+            {fieldErrors.rating && (
+              <p className="text-[10px] text-red-400 mt-1">{fieldErrors.rating}</p>
+            )}
           </div>
         </div>
 
-        <textarea
-          rows={3}
-          value={newCommentText}
-          onChange={(e) => setNewCommentText(e.target.value)}
-          placeholder="Поделитесь впечатлением от озвучки, книги и атмосферы..."
-          className="w-full p-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 text-xs sm:text-sm focus:outline-none focus:border-[#F59E0B]"
-        />
+        <div>
+          <textarea
+            rows={3}
+            value={newCommentText}
+            onChange={(e) => setNewCommentText(e.target.value)}
+            placeholder="Поделитесь впечатлением от озвучки, книги и атмосферы..."
+            className="w-full p-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 text-xs sm:text-sm focus:outline-none focus:border-[#F59E0B]"
+          />
+          {fieldErrors.text && (
+            <p className="text-[10px] text-red-400 mt-1">{fieldErrors.text}</p>
+          )}
+        </div>
 
         <div className="flex items-center justify-between flex-wrap gap-3">
           <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">

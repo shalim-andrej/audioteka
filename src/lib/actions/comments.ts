@@ -2,18 +2,24 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { addCommentToDb, getCommentsFromDb } from "@/lib/db-service";
 import { Comment } from "@/lib/types";
+import { commentSchema, formatZodErrors } from "@/lib/validations/comments";
+
+/**
+ * Результат Server Action addComment.
+ * Не бросаем исключение: клиент должен получить понятную ошибку,
+ * а не 500. Дискриминированный union — TypeScript заставит обработать
+ * оба случая (success / error).
+ */
+export type AddCommentResult =
+  | { success: true; comment: Comment }
+  | { success: false; error: string; fieldErrors?: Record<string, string> };
 
 /**
  * Server Action: добавить комментарий к книге.
- *
- * Вызывается из клиентского CommentsTab через useTransition.
- * После записи в БД инвалидирует кэш страницы книги — при следующем
- * заходе сервер отдаст свежий список комментариев.
- *
- * Возвращает созданный комментарий (для optimistic UI — клиент уже
- * показал его, а этот объект нужен, чтобы заменить временный ID на настоящий).
+ * Валидирует вход через zod, пишет в БД, инвалидирует кэш страницы книги.
  */
 export async function addComment(input: {
   bookId: string;
@@ -21,25 +27,31 @@ export async function addComment(input: {
   text: string;
   rating: number;
   isSpoiler: boolean;
-}): Promise<Comment> {
-  const comment = await addCommentToDb({
-    bookId: input.bookId,
-    user: input.user.trim() || "Слушатель PRO",
-    text: input.text.trim(),
-    rating: input.rating,
-    isSpoiler: input.isSpoiler,
-  });
+}): Promise<AddCommentResult> {
+  // 1. Валидация
+  const parsed = commentSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: "Проверьте поля формы",
+      fieldErrors: formatZodErrors(parsed.error),
+    };
+  }
 
-  // Инвалидируем кэш страницы книги — при следующем заходе
-  // серверный компонент перечитает комментарии из БД.
-  revalidatePath(`/book/${input.bookId}`);
-
-  return comment;
+  // 2. Запись в БД
+  try {
+    const comment = await addCommentToDb(parsed.data);
+    // 3. Инвалидация кэша страницы книги
+    revalidatePath(`/book/${parsed.data.bookId}`);
+    return { success: true, comment };
+  } catch (err) {
+    console.error("[addComment] DB error:", err);
+    return { success: false, error: "Не удалось сохранить комментарий" };
+  }
 }
 
 /**
  * Server Action: получить комментарии для книги.
- * Нужна, если захотим подгружать их на клиенте (например, при пагинации).
  */
 export async function getComments(bookId: string): Promise<Comment[]> {
   return await getCommentsFromDb(bookId);
