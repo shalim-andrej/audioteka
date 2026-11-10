@@ -1,6 +1,7 @@
 import { getDb, initDb } from "./db";
 import { Audiobook, Chapter, Comment } from "./types";
 import { AUDIOBOOKS } from "./audiobook-data";
+import { unstable_cache } from "next/cache";
 
 const DEFAULT_AUTHOR = "Популярный автор";
 const DEFAULT_NARRATOR = "Профессиональный чтец";
@@ -108,7 +109,12 @@ function caseVariants(term: string): string[] {
   return Array.from(variants);
 }
 
-export async function getBookByIdFromDb(id: string): Promise<Audiobook | null> {
+/*
+ * Внутренняя функция — без кэша. Всё, что вызывает unstable_cache,
+ * должно быть «чистым» (без побочных эффектов). Аргументы — примитивы,
+ * чтобы ключ кэша был предсказуемым.
+ */
+async function _getBookByIdFromDb(id: string): Promise<Audiobook | null> {
   try {
     await initDb();
     const db = getDb();
@@ -125,6 +131,18 @@ export async function getBookByIdFromDb(id: string): Promise<Audiobook | null> {
   }
 
   return AUDIOBOOKS.find((b) => b.id === id) || null;
+}
+
+/*
+ * Кэш одной книги. Тег `book-${id}` — чтобы сбрасывать точечно
+ * (revalidateTag("book-123") после мутации).
+ */
+export async function getBookByIdFromDb(id: string): Promise<Audiobook | null> {
+  return unstable_cache(
+    () => _getBookByIdFromDb(id),
+    ["book", id],
+    { revalidate: 300, tags: [`book-${id}`] }
+  )();
 }
 
 export async function getBooksFromDb(options?: {
@@ -298,10 +316,12 @@ export async function insertBookIntoDb(book: Audiobook) {
 
 // ===== Комментарии =====
 
-export async function getCommentsFromDb(
-  bookId: string,
-  limit: number = 50
-): Promise<Comment[]> {
+/*
+ * Внутренняя функция получения комментариев.
+ * Кэшируется через unstable_cache: если пользователь открыл книгу,
+ * следующий заход в течение 60 секунд — из кэша.
+ */
+async function _getCommentsFromDb(bookId: string, limit: number = 50): Promise<Comment[]> {
   try {
     await initDb();
     const db = getDb();
@@ -328,6 +348,14 @@ export async function getCommentsFromDb(
     console.warn("getCommentsFromDb error:", e);
     return [];
   }
+}
+
+export async function getCommentsFromDb(bookId: string, limit: number = 50): Promise<Comment[]> {
+  return unstable_cache(
+    () => _getCommentsFromDb(bookId, limit),
+    ["comments", bookId, String(limit)],
+    { revalidate: 60, tags: [`comments-${bookId}`] }
+  )();
 }
 
 export async function addCommentToDb(input: {
@@ -378,12 +406,11 @@ export async function addCommentToDb(input: {
   };
 }
 
-/**
- * Быстрый счётчик комментариев для книги.
- * Использует индекс idx_comments_book_id — не читает сами комментарии.
- * Нужен для отображения числа на вкладке «Отзывы» без загрузки списка.
+/*
+ * Быстрый счётчик — тоже кэшируется на 60 секунд.
+ * Тег comments-count-${bookId} — чтобы сбрасывать точечно после addComment.
  */
-export async function getCommentsCountFromDb(bookId: string): Promise<number> {
+async function _getCommentsCountFromDb(bookId: string): Promise<number> {
   try {
     await initDb();
     const db = getDb();
@@ -396,4 +423,12 @@ export async function getCommentsCountFromDb(bookId: string): Promise<number> {
     console.warn("getCommentsCountFromDb error:", e);
     return 0;
   }
+}
+
+export async function getCommentsCountFromDb(bookId: string): Promise<number> {
+  return unstable_cache(
+    () => _getCommentsCountFromDb(bookId),
+    ["comments-count", bookId],
+    { revalidate: 60, tags: [`comments-count-${bookId}`] }
+  )();
 }

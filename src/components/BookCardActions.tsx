@@ -34,7 +34,6 @@ export default function BookCardActions({ book }: { book: Audiobook }) {
   const isThisBookPlaying = currentBookId === book.id && isPlaying;
   const isFav = isFavorite(book.id);
 
-  // favorites намеренно читается в рендере: это и есть подписка на изменения
   void favorites;
 
   const handlePlayClick = (e: React.MouseEvent) => {
@@ -55,7 +54,7 @@ export default function BookCardActions({ book }: { book: Audiobook }) {
 
   return (
     <>
-      {/* Тач-таргет 44×44 для соответствия a11y */}
+      {/* Сердечко — тач-таргет 44×44. Поверх всего, z-20. */}
       <button
         type="button"
         onClick={handleFavClick}
@@ -73,12 +72,18 @@ export default function BookCardActions({ book }: { book: Audiobook }) {
         </span>
       </button>
 
-      <div className="absolute inset-0 z-10 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 bg-black/40 pointer-events-none [&:focus-within]:pointer-events-auto group-hover:pointer-events-auto">
+      {/*
+        Оверлей с кнопкой play.
+        pointer-events-none — всегда, чтобы клик по пустому месту
+        проваливался на ссылку-обложку под ним.
+        pointer-events-auto — только на самой кнопке play.
+      */}
+      <div className="absolute inset-0 z-10 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-300 bg-black/40 pointer-events-none">
         <button
           type="button"
           onClick={handlePlayClick}
           aria-label={isThisBookPlaying ? `Пауза: ${book.title}` : `Слушать: ${book.title}`}
-          className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#F59E0B] to-[#EA580C] flex items-center justify-center text-[#06080D] shadow-xl shadow-[#F59E0B]/30 hover:scale-110 active:scale-95 transition-transform cursor-pointer"
+          className="pointer-events-auto w-12 h-12 rounded-full bg-gradient-to-tr from-[#F59E0B] to-[#EA580C] flex items-center justify-center text-[#06080D] shadow-xl shadow-[#F59E0B]/30 hover:scale-110 active:scale-95 transition-transform cursor-pointer"
         >
           {isThisBookPlaying ? (
             <Pause className="w-6 h-6 fill-current" aria-hidden="true" />

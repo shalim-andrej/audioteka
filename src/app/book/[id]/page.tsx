@@ -9,7 +9,6 @@ import {
   ArrowRight,
   BookOpen,
   Headphones,
-  MessageSquare,
   Mic,
   Layers,
   Sparkles,
@@ -27,7 +26,7 @@ import { BookActions, NarrationsList } from "./BookActions";
 import BookRating from "./BookRating";
 import { BookPlayerPanel, ChapterQuickList, ChaptersTab } from "./BookPlayer";
 import type { PlayableBook, SlimChapter } from "./BookPlayer";
-import CommentsTab from "./CommentsTab";
+import BookTabs from "./BookTabs";
 
 export const revalidate = 300;
 
@@ -169,14 +168,90 @@ export default async function BookDetailPage({
     ],
   };
 
-  const tabHref = (key: TabKey) => (key === "about" ? `/book/${book.id}` : `/book/${book.id}?tab=${key}`);
+  /*
+   * tabHref нужна для aboutContent (ссылка «Открыть все N глав»).
+   * В самом BookTabs своя локальная tabHref — это не конфликт,
+   * просто две независимые функции с одинаковым именем в разных модулях.
+   */
+  const tabHref = (key: TabKey) =>
+    key === "about" ? `/book/${book.id}` : `/book/${book.id}?tab=${key}`;
 
-  const tabClass = (key: TabKey) =>
-    `px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-      tab === key
-        ? "bg-[#F59E0B] text-[#06080D] shadow-md shadow-[#F59E0B]/20"
-        : "bg-white/[0.04] text-gray-300 hover:text-white hover:bg-white/[0.08]"
-    }`;
+  // ===== Контент вкладок (серверный JSX, передаётся в клиентский BookTabs) =====
+
+  const aboutContent = (
+    <div className="space-y-6">
+      {book.seriesNextBook && (
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-950/40 via-[#0F1420] to-[#0F1420] border border-blue-500/20 flex items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">Продолжение цикла</span>
+            <h4 className="text-base font-bold text-white mt-0.5">{book.seriesNextBook.title}</h4>
+            <p className="text-xs text-gray-400">{book.seriesNextBook.subtitle || "Следующая книга серии"}</p>
+          </div>
+          <Link
+            href={`/book/${book.seriesNextBook.id}`}
+            prefetch={false}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors flex-shrink-0 cursor-pointer shadow-lg shadow-blue-500/20"
+          >
+            <span>Слушать далее</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <h3 className="font-serif text-2xl font-bold text-white flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-[#F59E0B]" />
+          Аннотация и сюжет
+        </h3>
+        <div className="p-6 rounded-2xl bg-[#0F1420]/80 border border-white/[0.08] text-gray-300 text-sm sm:text-base leading-relaxed space-y-4">
+          <p>{book.description}</p>
+          {book.shortDescription && (
+            <div className="p-4 rounded-xl bg-white/[0.02] border-l-4 border-[#F59E0B] text-xs sm:text-sm text-gray-300 italic">
+              «{book.shortDescription}»
+            </div>
+          )}
+        </div>
+      </div>
+
+      {chapters.length > 0 && (
+        <div className="p-5 rounded-2xl bg-[#0F1420]/60 border border-white/[0.08] space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+              <Headphones className="w-3.5 h-3.5 text-[#F59E0B]" />
+              Главы произведения ({chapters.length})
+            </span>
+            <Link
+              href={tabHref("chapters")}
+              prefetch={false}
+              className="text-xs text-[#F59E0B] hover:underline font-bold cursor-pointer"
+            >
+              Открыть все {chapters.length} глав →
+            </Link>
+          </div>
+
+          <ChapterQuickList book={playable} chapters={slimChapters.slice(0, 4)} />
+        </div>
+      )}
+    </div>
+  );
+
+  const chaptersContent = (
+    <ChaptersTab
+      book={playable}
+      chapters={slimChapters}
+      durationFormatted={book.durationFormatted}
+    />
+  );
+
+  const narrationsContent = book.otherNarrations ? (
+    <div className="space-y-4">
+      <h3 className="font-serif text-2xl font-bold text-white flex items-center gap-2">
+        <Mic className="w-5 h-5 text-[#F59E0B]" />
+        Другие озвучки этой книги
+      </h3>
+      <NarrationsList narrations={book.otherNarrations} />
+    </div>
+  ) : null;
 
   return (
     <>
@@ -327,99 +402,19 @@ export default async function BookDetailPage({
                 durationFormatted={chapters[0]?.durationFormatted || book.durationFormatted}
               />
 
-              <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3 overflow-x-auto scrollbar-none">
-                <Link href={tabHref("about")} prefetch={false} className={tabClass("about")}>
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>О книге и сюжет</span>
-                </Link>
-                <Link href={tabHref("chapters")} prefetch={false} className={tabClass("chapters")}>
-                  <Headphones className="w-3.5 h-3.5" />
-                  <span>Оглавление ({chapters.length})</span>
-                </Link>
-                {book.otherNarrations && book.otherNarrations.length > 0 && (
-                  <Link href={tabHref("narrations")} prefetch={false} className={tabClass("narrations")}>
-                    <Mic className="w-3.5 h-3.5" />
-                    <span>Озвучки ({book.otherNarrations.length})</span>
-                  </Link>
-                )}
-                <Link href={tabHref("comments")} prefetch={false} className={tabClass("comments")}>
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Отзывы ({commentsCount})</span>
-                </Link>
-              </div>
-
-              {tab === "about" && (
-                <div className="space-y-6">
-                  {book.seriesNextBook && (
-                    <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-950/40 via-[#0F1420] to-[#0F1420] border border-blue-500/20 flex items-center justify-between gap-4">
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">Продолжение цикла</span>
-                        <h4 className="text-base font-bold text-white mt-0.5">{book.seriesNextBook.title}</h4>
-                        <p className="text-xs text-gray-400">{book.seriesNextBook.subtitle || "Следующая книга серии"}</p>
-                      </div>
-                      <Link
-                        href={`/book/${book.seriesNextBook.id}`}
-                        prefetch={false}
-                        className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors flex-shrink-0 cursor-pointer shadow-lg shadow-blue-500/20"
-                      >
-                        <span>Слушать далее</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </Link>
-                    </div>
-                  )}
-
-                  <div className="space-y-3">
-                    <h3 className="font-serif text-2xl font-bold text-white flex items-center gap-2">
-                      <BookOpen className="w-5 h-5 text-[#F59E0B]" />
-                      Аннотация и сюжет
-                    </h3>
-                    <div className="p-6 rounded-2xl bg-[#0F1420]/80 border border-white/[0.08] text-gray-300 text-sm sm:text-base leading-relaxed space-y-4">
-                      <p>{book.description}</p>
-                      {book.shortDescription && (
-                        <div className="p-4 rounded-xl bg-white/[0.02] border-l-4 border-[#F59E0B] text-xs sm:text-sm text-gray-300 italic">
-                          «{book.shortDescription}»
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {chapters.length > 0 && (
-                    <div className="p-5 rounded-2xl bg-[#0F1420]/60 border border-white/[0.08] space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                          <Headphones className="w-3.5 h-3.5 text-[#F59E0B]" />
-                          Главы произведения ({chapters.length})
-                        </span>
-                        <Link href={tabHref("chapters")} prefetch={false} className="text-xs text-[#F59E0B] hover:underline font-bold cursor-pointer">
-                          Открыть все {chapters.length} глав →
-                        </Link>
-                      </div>
-
-                      <ChapterQuickList book={playable} chapters={slimChapters.slice(0, 4)} />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {tab === "chapters" && (
-                <ChaptersTab
-                  book={playable}
-                  chapters={slimChapters}
-                  durationFormatted={book.durationFormatted}
-                />
-              )}
-
-              {tab === "narrations" && book.otherNarrations && (
-                <div className="space-y-4">
-                  <h3 className="font-serif text-2xl font-bold text-white flex items-center gap-2">
-                    <Mic className="w-5 h-5 text-[#F59E0B]" />
-                    Другие озвучки этой книги
-                  </h3>
-                  <NarrationsList narrations={book.otherNarrations} />
-                </div>
-              )}
-
-              {tab === "comments" && <CommentsTab bookId={book.id} initialComments={comments} />}
+              {/* Клиентский BookTabs: вкладки + счётчик комментариев + контент */}
+              <BookTabs
+                bookId={book.id}
+                tab={tab}
+                chaptersCount={chapters.length}
+                narrationsCount={book.otherNarrations?.length ?? 0}
+                initialCommentsCount={commentsCount}
+                initialComments={comments}
+                aboutContent={aboutContent}
+                chaptersContent={chaptersContent}
+                narrationsContent={narrationsContent}
+                hasNarrations={Boolean(book.otherNarrations && book.otherNarrations.length > 0)}
+              />
 
               {relatedBooks.length > 0 && (
                 <section className="pt-8 border-t border-white/[0.08]">

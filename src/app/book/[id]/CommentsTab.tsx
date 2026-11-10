@@ -1,7 +1,4 @@
 // src/app/book/[id]/CommentsTab.tsx
-// КЛИЕНТСКИЙ ОСТРОВОК: отзывы. Грузится и гидрируется только когда
-// открыта вкладка «Отзывы» (?tab=comments). На обычном просмотре книги
-// этого кода в браузере нет.
 "use client";
 
 import React, { useState, useOptimistic, useTransition } from "react";
@@ -12,9 +9,10 @@ import { addComment } from "@/lib/actions/comments";
 interface CommentsTabProps {
   bookId: string;
   initialComments: Comment[];
+  onCommentAdded?: () => void;
 }
 
-export default function CommentsTab({ bookId, initialComments }: CommentsTabProps) {
+export default function CommentsTab({ bookId, initialComments, onCommentAdded }: CommentsTabProps) {
   const [commentList, setCommentList] = useState<Comment[]>(initialComments);
   const [newCommentText, setNewCommentText] = useState("");
   const [newCommentAuthor, setNewCommentAuthor] = useState("");
@@ -35,12 +33,9 @@ export default function CommentsTab({ bookId, initialComments }: CommentsTabProp
     e.preventDefault();
     if (isPending) return;
 
-    // Сбрасываем ошибки
     setFormError(null);
     setFieldErrors({});
 
-    // Клиентская проверка минимума — чтобы не дёргать сервер зря.
-    // Сервер проверит всё равно (zod), но UX лучше с мгновенной ошибкой.
     const trimmedText = newCommentText.trim();
     if (trimmedText.length < 3) {
       setFieldErrors({ text: "Комментарий должен быть не короче 3 символов" });
@@ -69,21 +64,16 @@ export default function CommentsTab({ bookId, initialComments }: CommentsTabProp
     startTransition(async () => {
       addOptimisticComment(optimisticComment);
       try {
-        const result = await addComment({
-          bookId,
-          user,
-          text,
-          rating,
-          isSpoiler,
-        });
+        const result = await addComment({ bookId, user, text, rating, isSpoiler });
 
         if (result.success) {
           setCommentList((prev) => [
             result.comment,
             ...prev.filter((c) => c.id !== optimisticComment.id),
           ]);
+          // Увеличиваем счётчик на вкладке через callback из родителя.
+          onCommentAdded?.();
         } else {
-          // Сервер вернул ошибку валидации — откат, показ ошибок
           setFormError(result.error);
           if (result.fieldErrors) setFieldErrors(result.fieldErrors);
           setNewCommentText(text);
