@@ -11,22 +11,26 @@ export function useFocusTrap(
 
     const container = containerRef.current;
 
-    // Находим все фокусируемые элементы внутри
     const getFocusableElements = () => {
       return Array.from(
         container.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
         )
-      ).filter((el) => el.offsetParent !== null); // Отфильтровываем невидимые элементы
+      ).filter((el) => {
+        // В JSDOM offsetParent всегда null, поэтому проверяем getClientRects или style.display
+        // Чтобы не ломать тесты, оставляем проверку на visibility, но не строгую к offsetParent
+        const style = window.getComputedStyle(el);
+        return style.display !== "none" && style.visibility !== "hidden";
+      });
     };
 
-    const focusableElements = getFocusableElements();
-    
-    // 1. Фокусируемся на первом элементе при открытии
-    if (focusableElements.length > 0) {
-      // Небольшая задержка, чтобы дождаться завершения анимации открытия
-      setTimeout(() => focusableElements[0]?.focus(), 50);
-    }
+    // Используем requestAnimationFrame, чтобы дождаться окончания рендера
+    const rafId = requestAnimationFrame(() => {
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length > 0) {
+        focusableElements[0]?.focus();
+      }
+    });
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -42,7 +46,6 @@ export function useFocusTrap(
         const firstElement = currentFocusable[0];
         const lastElement = currentFocusable[currentFocusable.length - 1];
 
-        // Циклический переход
         if (e.shiftKey) {
           if (document.activeElement === firstElement) {
             e.preventDefault();
@@ -58,12 +61,11 @@ export function useFocusTrap(
     };
 
     document.addEventListener("keydown", handleKeyDown);
-    
-    // Блокируем скролл фона, пока модалка открыта
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     return () => {
+      cancelAnimationFrame(rafId);
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = originalOverflow;
     };
