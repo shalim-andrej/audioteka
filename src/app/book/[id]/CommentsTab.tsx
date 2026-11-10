@@ -4,11 +4,17 @@
 // этого кода в браузере нет.
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useOptimistic, useTransition } from "react";
 import { MessageSquare, Star, ThumbsUp, ShieldAlert } from "lucide-react";
 import type { Comment } from "@/lib/types";
+import { addComment } from "@/lib/actions/comments";
 
-export default function CommentsTab({ initialComments }: { initialComments: Comment[] }) {
+interface CommentsTabProps {
+  bookId: string;
+  initialComments: Comment[];
+}
+
+export default function CommentsTab({ bookId, initialComments }: CommentsTabProps) {
   const [commentList, setCommentList] = useState<Comment[]>(initialComments);
   const [newCommentText, setNewCommentText] = useState("");
   const [newCommentAuthor, setNewCommentAuthor] = useState("");
@@ -16,24 +22,69 @@ export default function CommentsTab({ initialComments }: { initialComments: Comm
   const [newCommentSpoiler, setNewCommentSpoiler] = useState(false);
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
 
-  const handleAddComment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCommentText.trim()) return;
+  /*
+   * useOptimistic: показываем новый комментарий СРАЗУ, не дожидаясь ответа
+   * сервера. Если запрос упадёт — React автоматически откатит состояние
+   * к предыдущему (commentList без нового комментария).
+   */
+  const [optimisticComments, addOptimisticComment] = useOptimistic<
+    Comment[],
+    Comment
+  >(commentList, (current, newComment) => [newComment, ...current]);
 
-    const newC: Comment = {
-      id: "c-" + Date.now(),
-      user: newCommentAuthor.trim() || "Слушатель PRO",
-      avatar: (newCommentAuthor.trim() || "СП").slice(0, 2).toUpperCase(),
-      date: "Сегодня в " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      rating: newCommentRating,
-      text: newCommentText.trim(),
-      likes: 1,
-      isSpoiler: newCommentSpoiler,
+  /*
+   * useTransition: флаг «идёт серверный запрос». Можно показать спиннер
+   * или disabled на кнопке. Не блокирует UI (в отличие от useState).
+   */
+  const [isPending, startTransition] = useTransition();
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCommentText.trim() || isPending) return;
+
+    const user = newCommentAuthor.trim() || "Слушатель PRO";
+    const text = newCommentText.trim();
+    const rating = newCommentRating;
+    const isSpoiler = newCommentSpoiler;
+
+    // Временный объект: показывается сразу, потом заменится на настоящий.
+    const optimisticComment: Comment = {
+      id: "temp-" + Date.now(),
+      user,
+      avatar: user.slice(0, 2).toUpperCase(),
+      date: "Только что",
+      rating,
+      text,
+      likes: 0,
+      isSpoiler,
     };
 
-    setCommentList([newC, ...commentList]);
+    // Сбрасываем форму сразу — чтобы не было «залипания».
     setNewCommentText("");
     setNewCommentSpoiler(false);
+
+    startTransition(async () => {
+      addOptimisticComment(optimisticComment);
+      try {
+        const realComment = await addComment({
+          bookId,
+          user,
+          text,
+          rating,
+          isSpoiler,
+        });
+        // Заменяем временный комментарий настоящим (с реальным ID и датой).
+        setCommentList((prev) => [
+          realComment,
+          ...prev.filter((c) => c.id !== optimisticComment.id),
+        ]);
+      } catch (err) {
+        console.error("Не удалось отправить комментарий:", err);
+        // Откат: useOptimistic сам уберёт optimisticComment из optimistic-состояния.
+        // В commentList (real state) ничего не менялось, так что откат чистый.
+        setNewCommentText(text); // возвращаем текст в форму, чтобы не потерять
+      }
+    });
   };
 
   return (
@@ -41,7 +92,7 @@ export default function CommentsTab({ initialComments }: { initialComments: Comm
       <div className="flex items-center justify-between">
         <h3 className="font-serif text-2xl font-bold text-white flex items-center gap-2">
           <MessageSquare className="w-5 h-5 text-[#F59E0B]" />
-          Отзывы и комментарии ({commentList.length})
+          Отзывы и комментарии ({optimisticComments.length})
         </h3>
         <span className="text-xs text-gray-400">Обсуждение слушателей</span>
       </div>
@@ -97,19 +148,26 @@ export default function CommentsTab({ initialComments }: { initialComments: Comm
 
           <button
             type="submit"
-            className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#EA580C] text-[#06080D] font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-[#F59E0B]/20"
+            disabled={isPending}
+            className="px-6 py-2.5 rounded-xl bg-[#F59E0B] hover:bg-[#EA580C] disabled:opacity-50 disabled:cursor-not-allowed text-[#06080D] font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-[#F59E0B]/20"
           >
-            Отправить отзыв
+            {isPending ? "Отправляем..." : "Отправить отзыв"}
           </button>
         </div>
       </form>
 
       <div className="space-y-3">
-        {commentList.map((comm) => {
+        {optimisticComments.map((comm) => {
           const isHidden = comm.isSpoiler && !revealedSpoilers[comm.id];
+          const isTemp = comm.id.startsWith("temp-");
 
           return (
-            <div key={comm.id} className="p-4 sm:p-5 rounded-2xl bg-[#0F1420]/60 border border-white/[0.06] space-y-3">
+            <div
+              key={comm.id}
+              className={`p-4 sm:p-5 rounded-2xl bg-[#0F1420]/60 border border-white/[0.06] space-y-3 ${
+                isTemp ? "opacity-70" : ""
+              }`}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#F59E0B] to-[#EA580C] text-[#06080D] font-black text-xs flex items-center justify-center">

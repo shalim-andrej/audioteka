@@ -1,5 +1,5 @@
 import { getDb, initDb } from "./db";
-import { Audiobook, Chapter } from "./types";
+import { Audiobook, Chapter, Comment } from "./types";
 import { AUDIOBOOKS } from "./audiobook-data";
 
 const DEFAULT_AUTHOR = "Популярный автор";
@@ -15,13 +15,6 @@ const GENRE_KEYWORDS: Record<string, string[]> = {
   "для детей": ["дет", "сказк"],
 };
 
-/**
- * Обложка, сохранённая как base64 (data:image/...), весит 60–90 КБ
- * и уезжает в HTML целиком. Тринадцать таких картинок превращали
- * каталог в 964 КБ и задерживали открытие страницы на секунды.
- *
- * Такую обложку считаем отсутствующей: карточка покажет градиент.
- */
 function sanitizeCoverUrl(value: unknown): string {
   const url = String(value ?? "").trim();
   if (!url) return "";
@@ -29,10 +22,6 @@ function sanitizeCoverUrl(value: unknown): string {
   return url;
 }
 
-/**
- * Есть ли в базе полнотекстовый индекс books_fts.
- * Проверяем один раз на процесс, ответ запоминаем.
- */
 let ftsAvailable: boolean | null = null;
 
 async function hasFtsIndex(): Promise<boolean> {
@@ -47,7 +36,6 @@ async function hasFtsIndex(): Promise<boolean> {
   return ftsAvailable;
 }
 
-/** Превращает запрос человека в строку MATCH для полнотекстового индекса. */
 function toFtsQuery(search: string): string {
   return search
     .split(/\s+/)
@@ -111,10 +99,6 @@ function fullRowToAudiobook(row: any): Audiobook {
   };
 }
 
-/**
- * SQLite LIKE для кириллицы регистрозависим, поэтому к слову добавляем
- * варианты написания: «война» и «Война» дают одинаковый результат.
- */
 function caseVariants(term: string): string[] {
   const variants = new Set<string>();
   if (term.length === 0) return [term];
@@ -150,12 +134,6 @@ export async function getBooksFromDb(options?: {
   genre?: string;
   sort?: string;
   narrator?: string;
-  /**
-   * Не считать общее количество.
-   * COUNT(*) с фильтром по жанру не может использовать индекс и читает
-   * всю таблицу. Там, где число не нужно (похожие книги на странице книги),
-   * передавайте true — экономит секунды.
-   */
   skipCount?: boolean;
 }): Promise<{ items: Audiobook[]; total: number }> {
   try {
@@ -169,11 +147,6 @@ export async function getBooksFromDb(options?: {
     const conditions: string[] = ["clean = 1"];
     const args: (string | number)[] = [];
 
-    /*
-     * Жанр без LOWER(): функция в условии убивает возможность использовать
-     * индекс, и SQLite читал всю таблицу. Вместо этого перебираем варианты
-     * написания ключевого слова — как для поиска.
-     */
     if (options?.genre && options.genre !== "Все") {
       const gTerm = options.genre.toLowerCase();
       const keywords = GENRE_KEYWORDS[gTerm] || [gTerm];
@@ -193,19 +166,6 @@ export async function getBooksFromDb(options?: {
     }
 
     const search = options?.search?.trim();
-
-    /*
-     * ПОИСК.
-     *
-     * Раньше здесь было три LIKE '%слово%' по title, author, narrator.
-     * Подстроку с обоих концов индекс не обслуживает, поэтому SQLite
-     * читал все 52 407 строк вместе с главами и описаниями — 636 МБ,
-     * и один поиск занимал десятки секунд.
-     *
-     * Теперь, если есть полнотекстовый индекс books_fts, поиск идёт по нему:
-     * это несколько мегабайт вместо всей базы. Если индекса нет — работает
-     * старый путь, чтобы ничего не сломать.
-     */
     let usedFts = false;
 
     if (search) {
@@ -246,16 +206,9 @@ export async function getBooksFromDb(options?: {
         orderBy = "votes_count DESC";
     }
 
-    // Аргументы WHERE и ORDER BY раздельно: COUNT(*) не содержит ORDER BY
     const whereArgs = [...args];
     const orderArgs: string[] = [];
 
-    /*
-     * Поиск без полнотекстового индекса сортировал ещё и по «точности»:
-     * совпадение в авторе выше, чем в названии. Для этого в ORDER BY шли
-     * два LIKE. С индексом это не нужно — и лишние LIKE по всей таблице
-     * тоже исчезают.
-     */
     if (search && !usedFts) {
       const first = search.split(/\s+/)[0];
       orderArgs.push(`${first}%`, `${first}%`);
@@ -285,8 +238,6 @@ export async function getBooksFromDb(options?: {
     const items = dataRes.rows.map(fullRowToAudiobook);
 
     if (options?.skipCount) {
-      // Число не нужно: отдаём «не меньше, чем нашли» — этого хватает
-      // вызывающему коду, который просто берёт первые N книг.
       return { items, total: offset + items.length };
     }
 
@@ -330,7 +281,6 @@ export async function insertBookIntoDb(book: Audiobook) {
       book.durationFormatted || "1 ч 00 мин",
       book.bitrate || "192 kbps, MP3 Stereo",
       book.fileSize || "150 МБ",
-      // та же защита на записи: base64-обложка не попадёт в базу снова
       sanitizeCoverUrl(book.coverUrl),
       book.shortDescription || "",
       book.description || "",
@@ -344,4 +294,106 @@ export async function insertBookIntoDb(book: Audiobook) {
       Date.now(),
     ],
   });
+}
+
+// ===== Комментарии =====
+
+export async function getCommentsFromDb(
+  bookId: string,
+  limit: number = 50
+): Promise<Comment[]> {
+  try {
+    await initDb();
+    const db = getDb();
+    const res = await db.execute({
+      sql: `SELECT id, user, avatar, date, rating, text, likes, is_spoiler
+            FROM comments
+            WHERE book_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?`,
+      args: [bookId, limit],
+    });
+
+    return res.rows.map((row: any) => ({
+      id: String(row.id),
+      user: String(row.user),
+      avatar: String(row.avatar || "??"),
+      date: String(row.date || ""),
+      rating: Number(row.rating) || 0,
+      text: String(row.text),
+      likes: Number(row.likes) || 0,
+      isSpoiler: Boolean(row.is_spoiler),
+    }));
+  } catch (e) {
+    console.warn("getCommentsFromDb error:", e);
+    return [];
+  }
+}
+
+export async function addCommentToDb(input: {
+  bookId: string;
+  user: string;
+  text: string;
+  rating: number;
+  isSpoiler: boolean;
+}): Promise<Comment> {
+  await initDb();
+  const db = getDb();
+
+  const id = "c-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+  const createdAt = Date.now();
+  const date = "Сегодня в " + new Date().toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const avatar = (input.user || "СП").slice(0, 2).toUpperCase();
+
+  await db.execute({
+    sql: `INSERT INTO comments
+          (id, book_id, user, avatar, date, rating, text, likes, is_spoiler, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id,
+      input.bookId,
+      input.user,
+      avatar,
+      date,
+      input.rating,
+      input.text,
+      0,
+      input.isSpoiler ? 1 : 0,
+      createdAt,
+    ],
+  });
+
+  return {
+    id,
+    user: input.user,
+    avatar,
+    date,
+    rating: input.rating,
+    text: input.text,
+    likes: 0,
+    isSpoiler: input.isSpoiler,
+  };
+}
+
+/**
+ * Быстрый счётчик комментариев для книги.
+ * Использует индекс idx_comments_book_id — не читает сами комментарии.
+ * Нужен для отображения числа на вкладке «Отзывы» без загрузки списка.
+ */
+export async function getCommentsCountFromDb(bookId: string): Promise<number> {
+  try {
+    await initDb();
+    const db = getDb();
+    const res = await db.execute({
+      sql: `SELECT COUNT(*) AS cnt FROM comments WHERE book_id = ?`,
+      args: [bookId],
+    });
+    return Number(res.rows[0]?.cnt || 0);
+  } catch (e) {
+    console.warn("getCommentsCountFromDb error:", e);
+    return 0;
+  }
 }

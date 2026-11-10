@@ -1,10 +1,6 @@
 // src/app/book/[id]/page.tsx
 // СЕРВЕРНЫЙ КОМПОНЕНТ. Отдаёт готовый HTML: обложка, заголовок, описание,
 // оглавление, похожие книги. В браузер уходят только маленькие островки.
-//
-// Почему так: раньше вся страница была одним клиентским компонентом на 1000+
-// строк, и браузер должен был «оживить» её целиком. Lighthouse показывал
-// TBT 2 460 мс — почти 2,5 секунды браузер не отвечал на клики.
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -19,7 +15,12 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import { getBookByIdFromDb, getBooksFromDb } from "@/lib/db-service";
+import {
+  getBookByIdFromDb,
+  getBooksFromDb,
+  getCommentsFromDb,
+  getCommentsCountFromDb,
+} from "@/lib/db-service";
 import BookCard from "@/components/BookCard";
 import BookShell from "./BookShell";
 import { BookActions, NarrationsList } from "./BookActions";
@@ -81,8 +82,6 @@ export default async function BookDetailPage({
       ? tabParam
       : "about";
 
-  // Похожие книги по первому жанру. skipCount — общее число нигде не выводится,
-  // а COUNT(*) с фильтром по жанру читает всю таблицу.
   const primaryGenre = (book.genre || "").split("&")[0].trim();
   let relatedBooks: Awaited<ReturnType<typeof getBooksFromDb>>["items"] = [];
   if (primaryGenre) {
@@ -94,15 +93,27 @@ export default async function BookDetailPage({
     }
   }
 
+  let commentsCount = 0;
+  try {
+    commentsCount = await getCommentsCountFromDb(book.id);
+  } catch {
+    commentsCount = 0;
+  }
+
+  let comments: Awaited<ReturnType<typeof getCommentsFromDb>> = [];
+  if (tab === "comments") {
+    try {
+      comments = await getCommentsFromDb(book.id);
+    } catch {
+      comments = [];
+    }
+  }
+
   const chapters = book.chapters ?? [];
   const totalSeconds = Number(book.durationSeconds) || 0;
   const durationHours = Math.floor(totalSeconds / 3600);
   const durationMins = Math.floor((totalSeconds % 3600) / 60);
 
-  /*
-   * Облегчённая книга для клиентских островков: БЕЗ массива глав.
-   * PlayerContext догрузит главы сам при нажатии play.
-   */
   const playable: PlayableBook = {
     id: book.id,
     title: book.title,
@@ -122,9 +133,6 @@ export default async function BookDetailPage({
     audioUrl: c.audioUrl,
   }));
 
-  const comments = book.comments ?? [];
-
-  // ---- JSON-LD (без выдуманных значений: рейтинг только если он реальный) ----
   const ratingValue = Number(book.rating);
   const ratingCount = Number(book.votesCount);
   const hasRating = ratingValue > 0 && ratingCount > 0;
@@ -206,7 +214,6 @@ export default async function BookDetailPage({
           </nav>
 
           <div className="grid grid-cols-1 lg:grid-cols-[330px_1fr] gap-8 lg:gap-12 items-start mb-14">
-            {/* ---------- ЛЕВАЯ КОЛОНКА (сервер) ---------- */}
             <div className="flex flex-col space-y-6">
               <div className="relative w-full max-w-[330px] mx-auto lg:mx-0 aspect-[2/3] rounded-3xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] border border-white/15 bg-[#0F1420] group">
                 {book.coverUrl ? (
@@ -231,7 +238,7 @@ export default async function BookDetailPage({
                 rating={book.rating}
                 narratorRating={book.narratorRating ?? 0}
                 narrator={book.narrator}
-                              bookId={book.id}
+                bookId={book.id}
               />
 
               <div className="w-full max-w-[330px] mx-auto lg:mx-0 p-5 rounded-2xl bg-[#0F1420]/60 border border-white/[0.08] space-y-3">
@@ -272,7 +279,6 @@ export default async function BookDetailPage({
               </div>
             </div>
 
-            {/* ---------- ПРАВАЯ КОЛОНКА ---------- */}
             <div className="space-y-8">
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -321,7 +327,6 @@ export default async function BookDetailPage({
                 durationFormatted={chapters[0]?.durationFormatted || book.durationFormatted}
               />
 
-              {/* Вкладки — обычные ссылки: переключение без клиентского кода */}
               <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3 overflow-x-auto scrollbar-none">
                 <Link href={tabHref("about")} prefetch={false} className={tabClass("about")}>
                   <BookOpen className="w-3.5 h-3.5" />
@@ -339,7 +344,7 @@ export default async function BookDetailPage({
                 )}
                 <Link href={tabHref("comments")} prefetch={false} className={tabClass("comments")}>
                   <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Отзывы ({comments.length})</span>
+                  <span>Отзывы ({commentsCount})</span>
                 </Link>
               </div>
 
@@ -414,7 +419,7 @@ export default async function BookDetailPage({
                 </div>
               )}
 
-              {tab === "comments" && <CommentsTab initialComments={comments} />}
+              {tab === "comments" && <CommentsTab bookId={book.id} initialComments={comments} />}
 
               {relatedBooks.length > 0 && (
                 <section className="pt-8 border-t border-white/[0.08]">

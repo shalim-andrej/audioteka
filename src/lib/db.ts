@@ -116,6 +116,34 @@ export async function initDb() {
       );
     `);
 
+    /*
+     * Комментарии — отдельная таблица, не JSON в books.
+     * Почему: нужны фильтры, сортировка, пагинация, и возможность
+     * обновить/удалить один комментарий, не трогая остальные.
+     */
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS comments (
+        id TEXT PRIMARY KEY,
+        book_id TEXT NOT NULL,
+        user TEXT NOT NULL,
+        avatar TEXT,
+        date TEXT,
+        rating INTEGER DEFAULT 0,
+        text TEXT NOT NULL,
+        likes INTEGER DEFAULT 0,
+        is_spoiler INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+    `);
+
+    // Индекс по book_id — поиск комментариев для книги (частый запрос).
+    try {
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_comments_book_id ON comments(book_id);`);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments(created_at DESC);`);
+    } catch {
+      /* индексы могут уже существовать — не критично */
+    }
+
     try {
       await runSqlitePragmas();
     } catch {
