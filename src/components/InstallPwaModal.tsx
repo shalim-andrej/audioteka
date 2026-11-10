@@ -1,10 +1,11 @@
 // src/components/InstallPwaModal.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, X, Sparkles, CheckCircle2, Smartphone } from "lucide-react";
 import { reachMetrikaGoal } from "@/components/YandexMetrika";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -21,6 +22,11 @@ export default function InstallPwaModal({ isOpen, onClose }: InstallPwaModalProp
   const [busy, setBusy] = useState(false);
   const [showIosHint, setShowIosHint] = useState(false);
   const [showGenericHint, setShowGenericHint] = useState(false);
+  
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Подключаем наш хук
+  useFocusTrap(isOpen, modalRef, onClose);
 
   useEffect(() => {
     if (!isOpen) {
@@ -86,6 +92,7 @@ export default function InstallPwaModal({ isOpen, onClose }: InstallPwaModalProp
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-md"
             onClick={onClose}
+            aria-hidden="true" // Скрываем от скринридеров
           />
 
           {/* Modal */}
@@ -97,7 +104,17 @@ export default function InstallPwaModal({ isOpen, onClose }: InstallPwaModalProp
             transition={{ type: "spring", stiffness: 320, damping: 28, mass: 0.8 }}
             className="fixed inset-0 z-[101] flex items-center justify-center p-3 sm:p-4 pointer-events-none"
           >
-            <div className="relative w-full max-w-sm bg-gradient-to-b from-[#131C31] via-[#0E1524] to-[#080B11] border border-white/15 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden pointer-events-auto">
+            {/* 
+              Обертка для Focus Trap. 
+              role="dialog" и aria-modal="true" говорят скринридерам, что это модалка.
+            */}
+            <div
+              ref={modalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pwa-modal-title"
+              className="relative w-full max-w-sm bg-gradient-to-b from-[#131C31] via-[#0E1524] to-[#080B11] border border-white/15 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden pointer-events-auto"
+            >
               <div className="absolute top-0 right-0 w-48 h-48 bg-[#F59E0B]/15 rounded-full blur-3xl pointer-events-none" />
 
               <button
@@ -122,7 +139,9 @@ export default function InstallPwaModal({ isOpen, onClose }: InstallPwaModalProp
                     <Sparkles className="w-3 h-3 fill-current" />
                     Добавить на главный экран
                   </span>
-                  <h3 className="text-lg font-bold text-white truncate">Аудиотека PRO</h3>
+                  <h3 id="pwa-modal-title" className="text-lg font-bold text-white truncate">
+                    Аудиотека PRO
+                  </h3>
                   <p className="text-[11px] text-gray-400">Работает как обычное приложение</p>
                 </div>
               </div>
