@@ -4,7 +4,6 @@ import CommentsTab from "./CommentsTab";
 import { addComment } from "@/lib/actions/comments";
 import type { Comment } from "@/lib/types";
 
-// Мок Server Action — тест не должен ходить в БД.
 jest.mock("@/lib/actions/comments", () => ({
   addComment: jest.fn(),
 }));
@@ -39,18 +38,23 @@ describe("CommentsTab", () => {
     expect(screen.getByText("Анна")).toBeInTheDocument();
   });
 
-  it("показывает ошибку, если текст короче 3 символов", () => {
+  it("показывает ошибку, если текст короче 3 символов", async () => {
     render(<CommentsTab bookId="book-1" initialComments={[]} />);
 
     const textarea = screen.getByLabelText(/текст комментария/i);
     fireEvent.change(textarea, { target: { value: "ok" } });
 
+    // mode: "onChange" — ошибка появляется при вводе.
+    // waitFor нужен, потому что react-hook-form обновляет formState асинхронно.
+    await waitFor(() => {
+      expect(
+        screen.getByText(/комментарий должен быть не короче 3 символов/i)
+      ).toBeInTheDocument();
+    });
+
     const submit = screen.getByRole("button", { name: /отправить отзыв/i });
     fireEvent.click(submit);
 
-    expect(
-      screen.getByText(/комментарий должен быть не короче 3 символов/i)
-    ).toBeInTheDocument();
     expect(mockedAddComment).not.toHaveBeenCalled();
   });
 
@@ -62,7 +66,7 @@ describe("CommentsTab", () => {
         user: "Иван",
         avatar: "ИВ",
         date: "Сегодня",
-        rating: 8,
+        rating: 10,
         text: "Хорошая озвучка",
         likes: 0,
         isSpoiler: false,
@@ -116,6 +120,7 @@ describe("CommentsTab", () => {
 
     render(<CommentsTab bookId="book-1" initialComments={[]} />);
 
+    // user теперь необязательный — можно не заполнять.
     fireEvent.change(screen.getByLabelText(/текст комментария/i), {
       target: { value: "Длинный текст" },
     });

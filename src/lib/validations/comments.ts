@@ -3,9 +3,11 @@ import { z } from "zod";
 
 /**
  * Схема валидации комментария.
- * Применяется в Server Action addComment ДО записи в БД.
- * Клиент может прислать что угодно (curl, DevTools, Postman) —
- * сервер обязан проверить.
+ * Применяется и на клиенте (react-hook-form + zodResolver),
+ * и на сервере (Server Action addComment).
+ *
+ * user — необязательное: пустое имя подставляется «Слушатель PRO»
+ * на сервере. Это позволяет отправлять комментарий без имени.
  */
 export const commentSchema = z.object({
   bookId: z
@@ -15,8 +17,8 @@ export const commentSchema = z.object({
   user: z
     .string()
     .trim()
-    .min(1, "Имя не может быть пустым")
     .max(80, "Имя не длиннее 80 символов")
+    .optional()
     .default("Слушатель PRO"),
   text: z
     .string()

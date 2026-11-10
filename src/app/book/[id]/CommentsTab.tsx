@@ -2,9 +2,12 @@
 "use client";
 
 import React, { useState, useOptimistic, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { MessageSquare, Star, ThumbsUp, ShieldAlert } from "lucide-react";
 import type { Comment } from "@/lib/types";
 import { addComment } from "@/lib/actions/comments";
+import { commentSchema, type CommentInput } from "@/lib/validations/comments";
 
 interface CommentsTabProps {
   bookId: string;
@@ -14,10 +17,6 @@ interface CommentsTabProps {
 
 export default function CommentsTab({ bookId, initialComments, onCommentAdded }: CommentsTabProps) {
   const [commentList, setCommentList] = useState<Comment[]>(initialComments);
-  const [newCommentText, setNewCommentText] = useState("");
-  const [newCommentAuthor, setNewCommentAuthor] = useState("");
-  const [newCommentRating, setNewCommentRating] = useState(10);
-  const [newCommentSpoiler, setNewCommentSpoiler] = useState(false);
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -29,23 +28,39 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
 
   const [isPending, startTransition] = useTransition();
 
-  const handleAddComment = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /**
+   * React Hook Form + zod.
+   * mode: "onChange" — валидация при каждом изменении поля
+   * (нужно для тестов и для UX: ошибка видна сразу, а не после submit).
+   */
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+    setValue,
+  } = useForm<CommentInput>({
+    resolver: zodResolver(commentSchema),
+    defaultValues: {
+      bookId,
+      user: "",
+      text: "",
+      rating: 10,
+      isSpoiler: false,
+    },
+    mode: "onChange",
+  });
+
+  const onSubmit = handleSubmit((data) => {
     if (isPending) return;
 
     setFormError(null);
     setFieldErrors({});
 
-    const trimmedText = newCommentText.trim();
-    if (trimmedText.length < 3) {
-      setFieldErrors({ text: "Комментарий должен быть не короче 3 символов" });
-      return;
-    }
-
-    const user = newCommentAuthor.trim() || "Слушатель PRO";
-    const text = trimmedText;
-    const rating = newCommentRating;
-    const isSpoiler = newCommentSpoiler;
+    const user = (data.user ?? "").trim() || "Слушатель PRO";
+    const text = data.text.trim();
+    const rating = data.rating;
+    const isSpoiler = data.isSpoiler;
 
     const optimisticComment: Comment = {
       id: "temp-" + Date.now(),
@@ -58,8 +73,13 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
       isSpoiler,
     };
 
-    setNewCommentText("");
-    setNewCommentSpoiler(false);
+    reset({
+      bookId,
+      user: "",
+      text: "",
+      rating: 10,
+      isSpoiler: false,
+    });
 
     startTransition(async () => {
       addOptimisticComment(optimisticComment);
@@ -75,17 +95,17 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
         } else {
           setFormError(result.error);
           if (result.fieldErrors) setFieldErrors(result.fieldErrors);
-          setNewCommentText(text);
-          setNewCommentSpoiler(isSpoiler);
+          setValue("text", text);
+          setValue("isSpoiler", isSpoiler);
         }
       } catch (err) {
         console.error("Не удалось отправить комментарий:", err);
         setFormError("Не удалось отправить комментарий. Попробуйте ещё раз.");
-        setNewCommentText(text);
-        setNewCommentSpoiler(isSpoiler);
+        setValue("text", text);
+        setValue("isSpoiler", isSpoiler);
       }
     });
-  };
+  });
 
   return (
     <div className="space-y-6">
@@ -97,7 +117,7 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
         <span className="text-xs text-gray-400">Обсуждение слушателей</span>
       </div>
 
-      <form onSubmit={handleAddComment} className="p-5 rounded-2xl bg-[#0F1420] border border-white/10 space-y-4">
+      <form onSubmit={onSubmit} className="p-5 rounded-2xl bg-[#0F1420] border border-white/10 space-y-4">
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-300">
           Оставить отзыв об аудиокниге
         </h4>
@@ -115,14 +135,15 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
             </label>
             <input
               id="comment-author"
-              name="comment-author"
               type="text"
               autoComplete="nickname"
-              value={newCommentAuthor}
-              onChange={(e) => setNewCommentAuthor(e.target.value)}
               placeholder="Ваше имя (или никнейм)"
+              {...register("user")}
               className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 text-xs focus:outline-none focus:border-[#F59E0B]"
             />
+            {errors.user && (
+              <p className="text-[10px] text-red-400 mt-1">{errors.user.message}</p>
+            )}
             {fieldErrors.user && (
               <p className="text-[10px] text-red-400 mt-1">{fieldErrors.user}</p>
             )}
@@ -136,9 +157,7 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
               <span className="text-gray-400">Ваша оценка:</span>
               <select
                 id="comment-rating"
-                name="comment-rating"
-                value={newCommentRating}
-                onChange={(e) => setNewCommentRating(Number(e.target.value))}
+                {...register("rating", { valueAsNumber: true })}
                 className="bg-transparent text-[#F59E0B] font-bold focus:outline-none cursor-pointer"
               >
                 <option value={10}>10 / 10 ★ Шедевр</option>
@@ -147,6 +166,9 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
                 <option value={7}>7 / 10 ★ Хорошо</option>
               </select>
             </div>
+            {errors.rating && (
+              <p className="text-[10px] text-red-400 mt-1">{errors.rating.message}</p>
+            )}
             {fieldErrors.rating && (
               <p className="text-[10px] text-red-400 mt-1">{fieldErrors.rating}</p>
             )}
@@ -159,13 +181,14 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
           </label>
           <textarea
             id="comment-text"
-            name="comment-text"
             rows={3}
-            value={newCommentText}
-            onChange={(e) => setNewCommentText(e.target.value)}
             placeholder="Поделитесь впечатлением от озвучки, книги и атмосферы..."
+            {...register("text")}
             className="w-full p-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 text-xs sm:text-sm focus:outline-none focus:border-[#F59E0B]"
           />
+          {errors.text && (
+            <p className="text-[10px] text-red-400 mt-1">{errors.text.message}</p>
+          )}
           {fieldErrors.text && (
             <p className="text-[10px] text-red-400 mt-1">{fieldErrors.text}</p>
           )}
@@ -175,10 +198,8 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
           <label htmlFor="comment-spoiler" className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
             <input
               id="comment-spoiler"
-              name="comment-spoiler"
               type="checkbox"
-              checked={newCommentSpoiler}
-              onChange={(e) => setNewCommentSpoiler(e.target.checked)}
+              {...register("isSpoiler")}
               className="rounded accent-[#F59E0B]"
             />
             <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
