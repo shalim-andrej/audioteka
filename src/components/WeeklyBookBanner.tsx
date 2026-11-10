@@ -37,10 +37,11 @@ export default function WeeklyBookBanner({
           </div>
 
           <div className="space-y-1">
-            <h1 className="font-serif text-3xl sm:text-5xl lg:text-6xl font-bold text-white tracking-tight leading-[1.08] flex items-center gap-3">
+            {/* h2: над h3 в карточках, под h1 (sr-only) в page.tsx */}
+            <h2 className="font-serif text-3xl sm:text-5xl lg:text-6xl font-bold text-white tracking-tight leading-[1.08] flex items-center gap-3">
               <span>{book.title}</span>
               <PlayingIndicator bookId={book.id} />
-            </h1>
+            </h2>
 
             <p className="text-base sm:text-lg text-[#F59E0B] font-semibold">{book.author}</p>
           </div>

@@ -1,32 +1,20 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { Audiobook } from "@/lib/types";
 import { getBooksFromDb } from "@/lib/db-service";
-import CatalogShell from "@/components/CatalogShell";
-import InfiniteGrid from "@/components/InfiniteGrid";
 import BookCard from "@/components/BookCard";
 import WeeklyBookBanner from "@/components/WeeklyBookBanner";
 import HeaderIsland from "@/components/HeaderIsland";
 import ScrollToTop from "@/components/ScrollToTop";
+import BookGrid from "./BookGrid";
 import { pickWeeklyBook } from "@/lib/weekly";
 
 export const revalidate = 300;
 
-/** Размер страницы для догрузки. Сетка одна, поэтому число не влияет на вёрстку. */
 const PAGE_SIZE = 12;
-
-/** Сколько книг показываем в блоке «Популярное». */
 const POPULAR_COUNT = 5;
-
-/**
- * Сколько книг тянем для выбора «книги недели».
- * Пул шире, чем блок «Популярное», чтобы ротация была заметной.
- */
 const WEEKLY_POOL_SIZE = 24;
 
-/**
- * Поля, которые нужны карточке.
- * Главы, полные описания и комментарии в браузер не уходят.
- */
 const CARD_FIELDS = [
   "id",
   "title",
@@ -72,6 +60,24 @@ interface HomePageProps {
   }>;
 }
 
+/**
+ * Скелетон для сетки карточек.
+ * Показывается, пока BookGrid не готов (Suspense fallback).
+ */
+function CatalogSkeleton() {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-4">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} className="animate-pulse" aria-hidden="true">
+          <div className="aspect-[2/3] bg-white/[0.04] rounded-2xl mb-2" />
+          <div className="h-3 bg-white/[0.04] rounded w-3/4 mb-1" />
+          <div className="h-2 bg-white/[0.04] rounded w-1/2" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default async function HomePage({ searchParams }: HomePageProps) {
   const sp = await searchParams;
 
@@ -85,71 +91,56 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const requestedPage = Number.parseInt(sp.page ?? "1", 10);
   const pageNumber = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 
-  /*
-   * Отдаём всё, что пользователь уже догрузил прокруткой: первые
-   * pageNumber * PAGE_SIZE книг. Это нужно для возврата назад — сервер
-   * отрисует столько же карточек, и браузер восстановит позицию скролла.
-   */
   const limit = PAGE_SIZE * pageNumber;
-
-  const result = await getBooksFromDb({
-    sort,
-    genre: genre === "Все" ? undefined : genre,
-    search: search || undefined,
-    limit,
-    page: 1,
-  });
-
-  const totalBooks = result.total || 0;
-  const initialBooks = (result.items ?? []).map(toCardBook);
+  const showPromo = genre === "Все" && !search;
 
   /*
-   * Баннер и «Популярное» показываем только на несфильтрованном каталоге:
-   * когда человек выбрал жанр или ищет, ему нужна выдача, а не промо-блок.
-   * Проверяем жанр и поиск, но НЕ номер страницы — иначе баннер исчезал бы
-   * после прокрутки и возврата с карточки книги.
+   * Параллельно запрашиваем:
+   *   1. Быстрый COUNT(*) для заголовка (totalBooks).
+   *   2. Топ для «Популярного» и книги недели (если showPromo).
+   * Каталог (карточки) грузится отдельно — внутри BookGrid, стримится.
    */
-  const showPromo = genre === "Все" && !search;
+  const [countResult, topResult] = await Promise.all([
+    getBooksFromDb({
+      sort,
+      genre: genre === "Все" ? undefined : genre,
+      search: search || undefined,
+      limit: 0, // ← только счётчик, без карточек
+      page: 1,
+    }),
+    showPromo
+      ? getBooksFromDb({
+          sort: "popular",
+          limit: WEEKLY_POOL_SIZE,
+          skipCount: true,
+        })
+      : Promise.resolve({ items: [], total: 0 }),
+  ]);
+
+  const totalBooks = countResult.total || 0;
 
   let weeklyBookRaw: Audiobook | null = null;
   let popularBooks: Audiobook[] = [];
 
   if (showPromo) {
-    // Один запрос на оба блока: топ по популярности.
-    // skipCount — общее число здесь не нужно, а COUNT(*) по всей таблице дорогой.
-    const topResult = await getBooksFromDb({
-      sort: "popular",
-      limit: WEEKLY_POOL_SIZE,
-      skipCount: true,
-    });
-
     const topBooks = topResult.items ?? [];
     weeklyBookRaw = pickWeeklyBook(topBooks);
     popularBooks = topBooks.slice(0, POPULAR_COUNT).map(toCardBook);
   }
 
-  /*
-   * В баннере два разных объекта:
-   *   weeklyBookRaw  — с описанием и рейтингом, для серверной разметки;
-   *   weeklyBookCard — обрезанный, его получает клиентский островок с кнопкой play.
-   */
   const weeklyBookCard = weeklyBookRaw ? toCardBook(weeklyBookRaw) : null;
 
-  /*
-   * Число для подписи в поле поиска.
-   * На странице поиска totalBooks — это количество найденных книг (166),
-   * и «Поиск по 166 книгам» вводило в заблуждение. Подпись про размер
-   * каталога имеет смысл только на чистом каталоге.
-   */
   const headerCount = search || genre !== "Все" ? undefined : totalBooks;
 
   return (
     <div className="min-h-screen bg-[#06080D] text-white">
       {/*
-        Шапка стоит здесь — до баннера и до заголовка каталога.
-        Раньше её рисовал CatalogShell, и она попадала в середину страницы:
-        между «Каталог произведений» и фильтрами.
+        Единственный h1 на странице — семантический якорь.
+        Визуально скрыт (sr-only), но в DOM для скринридеров и SEO.
+        Все остальные заголовки — h2 (секции) и h3 (карточки).
       */}
+      <h1 className="sr-only">Аудиотека PRO — каталог аудиокниг</h1>
+
       <HeaderIsland totalBooks={headerCount} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -170,12 +161,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           </section>
         )}
 
-        {/*
-          Возврат на главную.
-          На странице поиска и при выбранном жанре человек мог уйти только
-          через логотип. Теперь есть явная ссылка нормального размера
-          (44 px по высоте — требование к размеру цели нажатия).
-        */}
         {(search || genre !== "Все") && (
           <Link
             href="/"
@@ -186,9 +171,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         )}
 
         <div className="mb-8">
-          <h1 className="font-serif text-3xl sm:text-4xl font-bold text-white mb-2">
+          {/* h2, не h1: h1 уже есть (sr-only) выше */}
+          <h2 className="font-serif text-3xl sm:text-4xl font-bold text-white mb-2">
             {search ? `Поиск: ${search}` : "Каталог произведений"}
-          </h1>
+          </h2>
           <p className="text-gray-400 text-sm">
             {search
               ? `Найдено ${totalBooks.toLocaleString("ru-RU")} книг.`
@@ -198,36 +184,22 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           </p>
         </div>
 
-        <CatalogShell
-          selectedGenre={genre}
-          sortBy={sort}
-          searchQuery={search || undefined}
-        >
-          {initialBooks.length === 0 ? (
-            <div className="text-center py-20 text-gray-400">
-              <p className="text-lg font-bold text-gray-300 mb-2">
-                {search ? "По запросу ничего не найдено" : "Ничего не найдено"}
-              </p>
-              <p className="text-sm">
-                {search
-                  ? "Попробуйте другое слово или сократите запрос."
-                  : "Попробуйте изменить фильтры или поисковый запрос."}
-              </p>
-            </div>
-          ) : (
-            <InfiniteGrid
-              initialBooks={initialBooks}
-              totalBooks={totalBooks}
-              initialPage={pageNumber}
-              pageSize={PAGE_SIZE}
-              genre={genre}
-              sort={sort}
-            />
-          )}
-        </CatalogShell>
+        {/*
+          Настоящий стриминг: BookGrid — асинхронный серверный компонент.
+          Он не рендерится до готовности, показывается скелетон.
+          Заголовок и счётчик видны сразу (они не ждут BookGrid).
+        */}
+        <Suspense fallback={<CatalogSkeleton />}>
+          <BookGrid
+            genre={genre}
+            sort={sort}
+            search={search}
+            limit={limit}
+            pageNumber={pageNumber}
+          />
+        </Suspense>
       </main>
 
-      {/* Кнопка «Наверх»: появляется после 700 px прокрутки */}
       <ScrollToTop />
     </div>
   );
