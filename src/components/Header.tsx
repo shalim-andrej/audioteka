@@ -192,44 +192,57 @@ export default function Header({
     if (lastItem) playBook(lastItem.book, lastItem.chapterIndex, lastItem.progressSec);
   };
 
-  const renderSearchForm = () => (
-    <form onSubmit={handleSearchSubmit} className="relative w-full" role="search">
-      <button
-        type="submit"
-        aria-label="Найти"
-        className="absolute left-1 top-1/2 -translate-y-1/2 min-w-[36px] min-h-[36px] grid place-items-center text-gray-400 hover:text-[#F59E0B] transition-colors cursor-pointer z-10"
-      >
-        <Search className="w-4 h-4" aria-hidden="true" />
-      </button>
-      <input
-        type="search"
-        value={activeSearch}
-        onChange={(e) => handleInputChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") handleSearchSubmit(e);
-        }}
-        onFocus={() => {
-          if (activeSearch.trim()) setIsDropdownOpen(true);
-        }}
-        placeholder={searchPlaceholder}
-        aria-label="Поиск книг"
-        className="w-full pl-10 pr-10 py-2 sm:py-2.5 bg-white/[0.06] hover:bg-white/[0.09] focus:bg-[#0F1420] text-white rounded-xl border border-white/[0.1] focus:border-[#F59E0B] outline-none text-xs sm:text-sm placeholder:text-gray-400 transition-all shadow-inner focus:shadow-[0_0_20px_rgba(245,158,11,0.2)]"
-      />
-      {activeSearch && (
+  /**
+   * Форма поиска. variant нужен, чтобы у desktop и mobile были РАЗНЫЕ id
+   * (иначе Lighthouse ругается «id должен быть уникальным» и «нет name»).
+   */
+  const renderSearchForm = (variant: "desktop" | "mobile") => {
+    const inputId = `search-${variant}`;
+    const inputName = `search`;
+    return (
+      <form onSubmit={handleSearchSubmit} className="relative w-full" role="search">
         <button
-          type="button"
-          aria-label="Очистить поиск"
-          onClick={() => {
-            handleInputChange("");
-            setIsDropdownOpen(false);
-          }}
-          className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[36px] min-h-[36px] grid place-items-center text-gray-400 hover:text-white rounded-full transition-colors cursor-pointer"
+          type="submit"
+          aria-label="Найти"
+          className="absolute left-1 top-1/2 -translate-y-1/2 min-w-[36px] min-h-[36px] grid place-items-center text-gray-400 hover:text-[#F59E0B] transition-colors cursor-pointer z-10"
         >
-          <X className="w-3.5 h-3.5" aria-hidden="true" />
+          <Search className="w-4 h-4" aria-hidden="true" />
         </button>
-      )}
-    </form>
-  );
+        <label htmlFor={inputId} className="sr-only">
+          Поиск книг
+        </label>
+        <input
+          id={inputId}
+          name={inputName}
+          type="search"
+          value={activeSearch}
+          onChange={(e) => handleInputChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSearchSubmit(e);
+          }}
+          onFocus={() => {
+            if (activeSearch.trim()) setIsDropdownOpen(true);
+          }}
+          placeholder={searchPlaceholder}
+          aria-label="Поиск книг"
+          className="w-full pl-10 pr-10 py-2 sm:py-2.5 bg-white/[0.06] hover:bg-white/[0.09] focus:bg-[#0F1420] text-white rounded-xl border border-white/[0.1] focus:border-[#F59E0B] outline-none text-xs sm:text-sm placeholder:text-gray-400 transition-all shadow-inner focus:shadow-[0_0_20px_rgba(245,158,11,0.2)]"
+        />
+        {activeSearch && (
+          <button
+            type="button"
+            aria-label="Очистить поиск"
+            onClick={() => {
+              handleInputChange("");
+              setIsDropdownOpen(false);
+            }}
+            className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[36px] min-h-[36px] grid place-items-center text-gray-400 hover:text-white rounded-full transition-colors cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+        )}
+      </form>
+    );
+  };
 
   const searchResultsList = (compact: boolean) => (
     <div className={compact ? "p-1.5" : "p-1.5 divide-y divide-white/[0.05]"}>
@@ -314,7 +327,7 @@ export default function Header({
           </Link>
 
           <div ref={desktopSearchRef} className="hidden sm:block relative flex-1 max-w-md mx-4">
-            {renderSearchForm()}
+            {renderSearchForm("desktop")}
 
             {isDropdownOpen && activeSearch.trim().length > 0 && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 max-h-[70vh] overflow-y-auto">
@@ -432,7 +445,7 @@ export default function Header({
         </div>
 
         <div ref={mobileSearchRef} className="block sm:hidden relative w-full pt-0.5">
-          {renderSearchForm()}
+          {renderSearchForm("mobile")}
 
           {isDropdownOpen && activeSearch.trim().length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-[#0F1420] border border-white/15 rounded-2xl shadow-2xl overflow-hidden z-50 max-h-[60vh] overflow-y-auto">

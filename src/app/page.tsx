@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { Audiobook } from "@/lib/types";
 import { getBooksFromDb } from "@/lib/db-service";
 import BookCard from "@/components/BookCard";
@@ -60,10 +61,6 @@ interface HomePageProps {
   }>;
 }
 
-/**
- * Скелетон для сетки карточек.
- * Показывается, пока BookGrid не готов (Suspense fallback).
- */
 function CatalogSkeleton() {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-4">
@@ -94,18 +91,17 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const limit = PAGE_SIZE * pageNumber;
   const showPromo = genre === "Все" && !search;
 
-  /*
-   * Параллельно запрашиваем:
-   *   1. Быстрый COUNT(*) для заголовка (totalBooks).
-   *   2. Топ для «Популярного» и книги недели (если showPromo).
-   * Каталог (карточки) грузится отдельно — внутри BookGrid, стримится.
-   */
+  // A/B-тест: middleware ставит cookie ab-hero (a или b).
+  // Если cookie нет (первый заход до middleware) — показываем вариант a.
+  const cookieStore = await cookies();
+  const abVariant = cookieStore.get("ab-hero")?.value === "b" ? "b" : "a";
+
   const [countResult, topResult] = await Promise.all([
     getBooksFromDb({
       sort,
       genre: genre === "Все" ? undefined : genre,
       search: search || undefined,
-      limit: 0, // ← только счётчик, без карточек
+      limit: 0,
       page: 1,
     }),
     showPromo
@@ -132,13 +128,18 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const headerCount = search || genre !== "Все" ? undefined : totalBooks;
 
+  // Текст заголовка зависит от A/B-варианта.
+  const catalogTitle =
+    abVariant === "b"
+      ? search
+        ? `Поиск: ${search}`
+        : "Слушайте книги онлайн"
+      : search
+        ? `Поиск: ${search}`
+        : "Каталог произведений";
+
   return (
     <div className="min-h-screen bg-[#06080D] text-white">
-      {/*
-        Единственный h1 на странице — семантический якорь.
-        Визуально скрыт (sr-only), но в DOM для скринридеров и SEO.
-        Все остальные заголовки — h2 (секции) и h3 (карточки).
-      */}
       <h1 className="sr-only">Аудиотека PRO — каталог аудиокниг</h1>
 
       <HeaderIsland totalBooks={headerCount} />
@@ -171,9 +172,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         )}
 
         <div className="mb-8">
-          {/* h2, не h1: h1 уже есть (sr-only) выше */}
           <h2 className="font-serif text-3xl sm:text-4xl font-bold text-white mb-2">
-            {search ? `Поиск: ${search}` : "Каталог произведений"}
+            {catalogTitle}
           </h2>
           <p className="text-gray-400 text-sm">
             {search
@@ -184,11 +184,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           </p>
         </div>
 
-        {/*
-          Настоящий стриминг: BookGrid — асинхронный серверный компонент.
-          Он не рендерится до готовности, показывается скелетон.
-          Заголовок и счётчик видны сразу (они не ждут BookGrid).
-        */}
         <Suspense fallback={<CatalogSkeleton />}>
           <BookGrid
             genre={genre}

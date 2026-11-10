@@ -50,6 +50,7 @@ function FilterControls({ selectedGenre, onGenreChange, sortBy, onSortChange }: 
       </label>
       <select
         id="sort-select"
+        name="sort"
         value={sortBy}
         onChange={(e) => onSortChange(e.target.value)}
         aria-label="Сортировка книг"

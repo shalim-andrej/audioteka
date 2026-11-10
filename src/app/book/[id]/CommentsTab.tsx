@@ -71,7 +71,6 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
             result.comment,
             ...prev.filter((c) => c.id !== optimisticComment.id),
           ]);
-          // Увеличиваем счётчик на вкладке через callback из родителя.
           onCommentAdded?.();
         } else {
           setFormError(result.error);
@@ -111,8 +110,14 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
+            <label htmlFor="comment-author" className="sr-only">
+              Ваше имя
+            </label>
             <input
+              id="comment-author"
+              name="comment-author"
               type="text"
+              autoComplete="nickname"
               value={newCommentAuthor}
               onChange={(e) => setNewCommentAuthor(e.target.value)}
               placeholder="Ваше имя (или никнейм)"
@@ -124,9 +129,14 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
           </div>
 
           <div>
+            <label htmlFor="comment-rating" className="sr-only">
+              Ваша оценка
+            </label>
             <div className="flex items-center justify-between bg-white/5 border border-white/10 px-4 py-2 rounded-xl text-xs">
               <span className="text-gray-400">Ваша оценка:</span>
               <select
+                id="comment-rating"
+                name="comment-rating"
                 value={newCommentRating}
                 onChange={(e) => setNewCommentRating(Number(e.target.value))}
                 className="bg-transparent text-[#F59E0B] font-bold focus:outline-none cursor-pointer"
@@ -144,7 +154,12 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
         </div>
 
         <div>
+          <label htmlFor="comment-text" className="sr-only">
+            Текст комментария
+          </label>
           <textarea
+            id="comment-text"
+            name="comment-text"
             rows={3}
             value={newCommentText}
             onChange={(e) => setNewCommentText(e.target.value)}
@@ -157,8 +172,10 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
         </div>
 
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
+          <label htmlFor="comment-spoiler" className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
             <input
+              id="comment-spoiler"
+              name="comment-spoiler"
               type="checkbox"
               checked={newCommentSpoiler}
               onChange={(e) => setNewCommentSpoiler(e.target.checked)}
