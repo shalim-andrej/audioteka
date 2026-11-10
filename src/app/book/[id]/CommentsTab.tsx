@@ -5,6 +5,7 @@ import React, { useState, useOptimistic, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, Star, ThumbsUp, ShieldAlert } from "lucide-react";
 import type { Comment } from "@/lib/types";
 import { addComment } from "@/lib/actions/comments";
@@ -219,59 +220,77 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
         </div>
       </form>
 
+      {/*
+        AnimatePresence — обязателен для exit-анимации.
+        initial={false} — при первом рендере существующих комментариев
+        анимации появления НЕ будет (они уже на странице).
+        Анимация срабатывает только на новых (optimistic) комментариях.
+      */}
       <div className="space-y-3">
-        {optimisticComments.map((comm) => {
-          const isHidden = comm.isSpoiler && !revealedSpoilers[comm.id];
-          const isTemp = comm.id.startsWith("temp-");
+        <AnimatePresence initial={false}>
+          {optimisticComments.map((comm) => {
+            const isHidden = comm.isSpoiler && !revealedSpoilers[comm.id];
+            const isTemp = comm.id.startsWith("temp-");
 
-          return (
-            <div
-              key={comm.id}
-              className={`p-4 sm:p-5 rounded-2xl bg-[#0F1420]/60 border border-white/[0.06] space-y-3 ${
-                isTemp ? "opacity-70" : ""
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#F59E0B] to-[#EA580C] text-[#06080D] font-black text-xs flex items-center justify-center">
-                    {comm.avatar}
+            return (
+              <motion.div
+                key={comm.id}
+                layout
+                initial={{ opacity: 0, y: -24, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -80, transition: { duration: 0.2 } }}
+                transition={{
+                  type: "spring",
+                  stiffness: 320,
+                  damping: 28,
+                  mass: 0.8,
+                }}
+                className={`p-4 sm:p-5 rounded-2xl bg-[#0F1420]/60 border border-white/[0.06] space-y-3 ${
+                  isTemp ? "opacity-70" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#F59E0B] to-[#EA580C] text-[#06080D] font-black text-xs flex items-center justify-center">
+                      {comm.avatar}
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-white block">{comm.user}</span>
+                      <span className="text-[10px] text-gray-500">{comm.date}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-xs font-bold text-white block">{comm.user}</span>
-                    <span className="text-[10px] text-gray-500">{comm.date}</span>
+
+                  <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
+                    <Star className="w-3 h-3 text-[#F59E0B] fill-[#F59E0B]" />
+                    <span className="text-xs font-bold text-white">{comm.rating}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
-                  <Star className="w-3 h-3 text-[#F59E0B] fill-[#F59E0B]" />
-                  <span className="text-xs font-bold text-white">{comm.rating}</span>
-                </div>
-              </div>
+                {isHidden ? (
+                  <div
+                    onClick={() => setRevealedSpoilers((prev) => ({ ...prev, [comm.id]: true }))}
+                    className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between cursor-pointer hover:bg-amber-500/20 transition-all"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-400" />
+                      Этот комментарий помечен как спойлер. Нажмите, чтобы прочитать.
+                    </span>
+                    <span className="underline font-bold text-[11px]">Показать</span>
+                  </div>
+                ) : (
+                  <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">{comm.text}</p>
+                )}
 
-              {isHidden ? (
-                <div
-                  onClick={() => setRevealedSpoilers((prev) => ({ ...prev, [comm.id]: true }))}
-                  className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between cursor-pointer hover:bg-amber-500/20 transition-all"
-                >
-                  <span className="flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-amber-400" />
-                    Этот комментарий помечен как спойлер. Нажмите, чтобы прочитать.
-                  </span>
-                  <span className="underline font-bold text-[11px]">Показать</span>
+                <div className="flex items-center justify-end gap-3 text-xs text-gray-400 pt-1">
+                  <button className="flex items-center gap-1 hover:text-[#F59E0B] transition-colors cursor-pointer">
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                    <span>{comm.likes}</span>
+                  </button>
                 </div>
-              ) : (
-                <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">{comm.text}</p>
-              )}
-
-              <div className="flex items-center justify-end gap-3 text-xs text-gray-400 pt-1">
-                <button className="flex items-center gap-1 hover:text-[#F59E0B] transition-colors cursor-pointer">
-                  <ThumbsUp className="w-3.5 h-3.5" />
-                  <span>{comm.likes}</span>
-                </button>
-              </div>
-            </div>
-          );
-        })}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
     </div>
   );
