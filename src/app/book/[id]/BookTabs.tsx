@@ -2,11 +2,12 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
 import { BookOpen, Headphones, MessageSquare, Mic } from "lucide-react";
 import type { Comment } from "@/lib/types";
 import CommentsTab from "./CommentsTab";
+import { Tabs } from "@/components/ui/Tabs";
+import { TabsLink } from "./TabsLink"; // Наш кастомный Link
+import { TabsContent } from "@/components/ui/TabsContent";
 
 type TabKey = "about" | "chapters" | "narrations" | "comments";
 
@@ -40,61 +41,50 @@ export default function BookTabs({
   const tabHref = (key: TabKey) =>
     key === "about" ? `/book/${bookId}` : `/book/${bookId}?tab=${key}`;
 
-  const tabClass = (key: TabKey) =>
+  // Функция стилей переехала сюда, чтобы TabsLink не знал про дизайн
+  const tabClass = (isActive: boolean) =>
     `px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-      tab === key
+      isActive
         ? "bg-[#F59E0B] text-[#06080D] shadow-md shadow-[#F59E0B]/20"
         : "bg-white/[0.04] text-gray-300 hover:text-white hover:bg-white/[0.08]"
     }`;
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3 overflow-x-auto scrollbar-none">
-        <Link href={tabHref("about")} prefetch={false} className={tabClass("about")}>
+    <Tabs value={tab} onValueChange={() => {}} className="space-y-8">
+      <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3 overflow-x-auto scrollbar-none" role="tablist">
+        <TabsLink value="about" href={tabHref("about")} className={tabClass}>
           <BookOpen className="w-3.5 h-3.5" />
           <span>О книге и сюжет</span>
-        </Link>
-        <Link href={tabHref("chapters")} prefetch={false} className={tabClass("chapters")}>
+        </TabsLink>
+        
+        <TabsLink value="chapters" href={tabHref("chapters")} className={tabClass}>
           <Headphones className="w-3.5 h-3.5" />
           <span>Оглавление ({chaptersCount})</span>
-        </Link>
+        </TabsLink>
+
         {hasNarrations && (
-          <Link href={tabHref("narrations")} prefetch={false} className={tabClass("narrations")}>
+          <TabsLink value="narrations" href={tabHref("narrations")} className={tabClass}>
             <Mic className="w-3.5 h-3.5" />
             <span>Озвучки ({narrationsCount})</span>
-          </Link>
+          </TabsLink>
         )}
-        <Link href={tabHref("comments")} prefetch={false} className={tabClass("comments")}>
+
+        <TabsLink value="comments" href={tabHref("comments")} className={tabClass}>
           <MessageSquare className="w-3.5 h-3.5" />
           <span>Отзывы ({commentsCount})</span>
-        </Link>
+        </TabsLink>
       </div>
 
-      {/*
-        AnimatePresence mode="wait" — новая вкладка ждёт, пока старая
-        завершит exit-анимацию. Без этого две вкладки рендерятся одновременно
-        и «прыгают».
-      */}
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={tab}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -12 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-        >
-          {tab === "about" && aboutContent}
-          {tab === "chapters" && chaptersContent}
-          {tab === "narrations" && narrationsContent}
-          {tab === "comments" && (
-            <CommentsTab
-              bookId={bookId}
-              initialComments={initialComments}
-              onCommentAdded={() => setCommentsCount((n) => n + 1)}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </div>
+      <TabsContent value="about">{aboutContent}</TabsContent>
+      <TabsContent value="chapters">{chaptersContent}</TabsContent>
+      <TabsContent value="narrations">{narrationsContent}</TabsContent>
+      <TabsContent value="comments">
+        <CommentsTab
+          bookId={bookId}
+          initialComments={initialComments}
+          onCommentAdded={() => setCommentsCount((n) => n + 1)}
+        />
+      </TabsContent>
+    </Tabs>
   );
 }
