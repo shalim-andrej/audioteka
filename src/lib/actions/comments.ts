@@ -1,8 +1,7 @@
 // src/lib/actions/comments.ts
 "use server";
 
-import { revalidateTag } from "next/cache";
-import { z } from "zod";
+import { updateTag } from "next/cache";
 import { addCommentToDb, getCommentsFromDb } from "@/lib/db-service";
 import { Comment } from "@/lib/types";
 import { commentSchema, formatZodErrors } from "@/lib/validations/comments";
@@ -19,6 +18,7 @@ export async function addComment(input: {
   isSpoiler: boolean;
 }): Promise<AddCommentResult> {
   const parsed = commentSchema.safeParse(input);
+
   if (!parsed.success) {
     return {
       success: false,
@@ -30,10 +30,8 @@ export async function addComment(input: {
   try {
     const comment = await addCommentToDb(parsed.data);
 
-    // В Next.js 16 revalidateTag требует второй аргумент — profile кэша.
-    // "max" сбрасывает все кэши с этим тегом независимо от профиля.
-    revalidateTag(`comments-${parsed.data.bookId}`, "max");
-    revalidateTag(`comments-count-${parsed.data.bookId}`, "max");
+    updateTag(`comments-${parsed.data.bookId}`);
+    updateTag(`comments-count-${parsed.data.bookId}`);
 
     return { success: true, comment };
   } catch (err) {

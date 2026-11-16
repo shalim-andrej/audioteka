@@ -1,55 +1,104 @@
 import { createClient } from "@libsql/client";
 import { neon } from "@neondatabase/serverless";
-import path from "path";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 export interface UniversalDbResult {
   rows: any[];
 }
 
 export interface UniversalDb {
-  execute: (stmt: { sql: string; args?: any[] } | string) => Promise<UniversalDbResult>;
+  execute: (
+    stmt: { sql: string; args?: any[] } | string
+  ) => Promise<UniversalDbResult>;
 }
 
 let dbInstance: UniversalDb | null = null;
-// Инициализация выполняется ровно один раз на процесс.
-// Раньше initDb() вызывался перед каждым запросом и каждый раз
-// прогонял CREATE TABLE + 5 CREATE INDEX + 3 PRAGMA.
 let initPromise: Promise<void> | null = null;
+
+// База Литрес используется при локальной разработке
+// или при специально включённом локальном production-тесте.
+function useLitresTestDb(): boolean {
+  return (
+    process.env.LITRES_TEST_DB === "1" &&
+    (
+      process.env.NODE_ENV === "development" ||
+      process.env.LITRES_LOCAL_PROD_TEST === "1"
+    )
+  );
+}
 
 export function getDb(): UniversalDb {
   if (dbInstance) return dbInstance;
 
+  const testLitres = useLitresTestDb();
   const dbUrl = process.env.DATABASE_URL;
 
-  // 1. Neon PostgreSQL (если настроен в .env)
-  if (dbUrl && (dbUrl.startsWith("postgres://") || dbUrl.startsWith("postgresql://"))) {
+  // При локальном тесте Литрес Neon не используется.
+  if (
+    !testLitres &&
+    dbUrl &&
+    (dbUrl.startsWith("postgres://") ||
+      dbUrl.startsWith("postgresql://"))
+  ) {
     const sql = neon(dbUrl);
 
     dbInstance = {
       execute: async (stmt) => {
-        const sqlText = typeof stmt === "string" ? stmt : stmt.sql;
-        const args = typeof stmt === "string" ? [] : stmt.args || [];
+        const sqlText =
+          typeof stmt === "string" ? stmt : stmt.sql;
 
-        // Конвертируем ? в $1, $2, $3 для PostgreSQL
+        const args =
+          typeof stmt === "string" ? [] : stmt.args || [];
+
         let paramIdx = 1;
-        const pgSql = sqlText.replace(/\?/g, () => `$${paramIdx++}`);
+
+        const pgSql = sqlText.replace(
+          /\?/g,
+          () => `$${paramIdx++}`
+        );
 
         try {
-          const rows = args.length > 0 ? await sql.query(pgSql, args) : await sql.query(pgSql);
+          const rows =
+            args.length > 0
+              ? await sql.query(pgSql, args)
+              : await sql.query(pgSql);
+
           return { rows };
         } catch (e: any) {
-          console.error("Neon Postgres query error:", e.message, "SQL:", pgSql);
+          console.error(
+            "Neon Postgres query error:",
+            e.message,
+            "SQL:",
+            pgSql
+          );
           throw e;
         }
       },
     };
+
     return dbInstance;
   }
 
-  // 2. Локальный SQLite (@libsql/client)
-  const dbPath = path.join(process.cwd(), "audiobooks.db");
+  const dbPath = testLitres
+    ? path.join(
+        os.homedir(),
+        "Downloads",
+        "audiobooks-litres-full.db"
+      )
+    : path.join(process.cwd(), "audiobooks.db");
+
+  // Не создаём случайно пустую базу вместо тестовой.
+  if (testLitres && !fs.existsSync(dbPath)) {
+    throw new Error(
+      `Тестовая база Литрес не найдена: ${dbPath}`
+    );
+  }
+
   const client = createClient({
-    url: `file:${dbPath}`,
+    url: pathToFileURL(dbPath).href,
   });
 
   dbInstance = {
@@ -64,9 +113,8 @@ export function getDb(): UniversalDb {
 
 async function runSqlitePragmas() {
   const db = getDb();
-  // mmap: отдаём чтение файла операционной системе, без копирования в кучу
+
   await db.execute("PRAGMA mmap_size = 268435456;");
-  // временные таблицы сортировки держим в памяти, а не на диске
   await db.execute("PRAGMA temp_store = MEMORY;");
   await db.execute("PRAGMA journal_mode = WAL;");
   await db.execute("PRAGMA synchronous = NORMAL;");
@@ -77,14 +125,21 @@ export async function initDb() {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
+    const testLitres = useLitresTestDb();
     const dbUrl = process.env.DATABASE_URL;
 
-    // Для Neon таблица уже создана и заполнена
-    if (dbUrl && (dbUrl.startsWith("postgres://") || dbUrl.startsWith("postgresql://"))) {
+    // Для Neon таблицы уже созданы.
+    if (
+      !testLitres &&
+      dbUrl &&
+      (dbUrl.startsWith("postgres://") ||
+        dbUrl.startsWith("postgresql://"))
+    ) {
       return;
     }
 
     const db = getDb();
+
     await db.execute(`
       CREATE TABLE IF NOT EXISTS books (
         id TEXT PRIMARY KEY,
@@ -116,11 +171,6 @@ export async function initDb() {
       );
     `);
 
-    /*
-     * Комментарии — отдельная таблица, не JSON в books.
-     * Почему: нужны фильтры, сортировка, пагинация, и возможность
-     * обновить/удалить один комментарий, не трогая остальные.
-     */
     await db.execute(`
       CREATE TABLE IF NOT EXISTS comments (
         id TEXT PRIMARY KEY,
@@ -136,18 +186,24 @@ export async function initDb() {
       );
     `);
 
-    // Индекс по book_id — поиск комментариев для книги (частый запрос).
     try {
-      await db.execute(`CREATE INDEX IF NOT EXISTS idx_comments_book_id ON comments(book_id);`);
-      await db.execute(`CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments(created_at DESC);`);
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_comments_book_id
+        ON comments(book_id);
+      `);
+
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_comments_created_at
+        ON comments(created_at DESC);
+      `);
     } catch {
-      /* индексы могут уже существовать — не критично */
+      // Индексы могут уже существовать.
     }
 
     try {
       await runSqlitePragmas();
     } catch {
-      /* PRAGMA может быть недоступен — не критично */
+      // PRAGMA может быть недоступен.
     }
   })();
 

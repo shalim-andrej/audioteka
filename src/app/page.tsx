@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { Audiobook } from "@/lib/types";
 import { getBooksFromDb } from "@/lib/db-service";
 import BookCard from "@/components/BookCard";
+import PromotionsPanel from "@/components/PromotionsPanel";
 import WeeklyBookBanner from "@/components/WeeklyBookBanner";
 import HeaderIsland from "@/components/HeaderIsland";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -148,6 +149,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         {weeklyBookRaw && weeklyBookCard && (
           <WeeklyBookBanner book={weeklyBookRaw} playerBook={weeklyBookCard} />
         )}
+
+        {showPromo && <div className="mb-10"><PromotionsPanel /></div>}
 
         {popularBooks.length > 0 && (
           <section className="mb-10">

@@ -56,3 +56,4 @@ npm-debug.log*
 *.orig
 # отчёты покрытия Jest
 coverage/
+/data/advcake-*.json

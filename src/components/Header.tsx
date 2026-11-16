@@ -15,8 +15,6 @@ import {
   Star,
   ArrowRight,
   ChevronDown,
-  Download,
-  Smartphone,
 } from "lucide-react";
 import { usePlayerUi } from "@/context/PlayerContext";
 import { useFavoritesStore } from "@/store/favorites";
@@ -24,9 +22,7 @@ import { Audiobook } from "@/lib/types";
 import { reachMetrikaGoal } from "@/components/YandexMetrika";
 import { useQuery } from "@tanstack/react-query";
 
-const InstallPwaModal = dynamic(() => import("@/components/InstallPwaModal"), {
-  ssr: false,
-});
+const CategoryPicker = dynamic(() => import("@/components/CategoryPicker"), { ssr: false });
 
 interface HeaderProps {
   onOpenFavorites: () => void;
@@ -47,11 +43,9 @@ export default function Header({
   const favorites = useFavoritesStore((state) => state.favorites);
 
   const [isMounted, setIsMounted] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
   const [localSearch, setLocalSearch] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
-  const [isPwaModalOpen, setIsPwaModalOpen] = useState(false);
 
   const desktopSearchRef = useRef<HTMLDivElement>(null);
   const mobileSearchRef = useRef<HTMLDivElement>(null);
@@ -65,12 +59,7 @@ export default function Header({
 
   useEffect(() => {
     setIsMounted(true);
-    if (typeof window !== "undefined") {
-      const standalone =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        (window.navigator as { standalone?: boolean }).standalone === true;
-      setIsStandalone(standalone);
-    }
+
   }, []);
 
   useEffect(() => {
@@ -367,6 +356,9 @@ export default function Header({
                   <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-300 border-b border-white/[0.06] mb-1">
                     Жанры каталога
                   </div>
+                  <CategoryPicker onChoose={() => setIsCatalogOpen(false)} />
+                  <div className="my-2 border-t border-white/10" />
+                  <Link href="/akcii" prefetch={false} onClick={() => setIsCatalogOpen(false)} className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-amber-400 hover:bg-white/[0.08] min-h-[40px]">Акции Литрес <ArrowRight className="w-3 h-3" aria-hidden="true" /></Link>
                   {[
                     { name: "Все аудиокниги", param: "Все", icon: "📚" },
                     { name: "Фантастика и фэнтези", param: "Фантастика", icon: "🚀" },
@@ -405,17 +397,7 @@ export default function Header({
               </button>
             )}
 
-            {!isStandalone && (
-              <button
-                type="button"
-                onClick={() => setIsPwaModalOpen(true)}
-                className="hidden sm:flex items-center gap-1.5 text-xs font-bold px-3 min-h-[40px] rounded-xl bg-gradient-to-r from-[#F59E0B]/15 to-[#EA580C]/15 hover:from-[#F59E0B]/25 hover:to-[#EA580C]/25 text-[#F59E0B] border border-[#F59E0B]/35 transition-all active:scale-95 shadow-sm cursor-pointer whitespace-nowrap"
-                title="Установить приложение"
-              >
-                <Download className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Установить приложение</span>
-              </button>
-            )}
+
 
             <button
               type="button"
@@ -451,24 +433,9 @@ export default function Header({
           )}
         </div>
 
-        {!isStandalone && (
-          <div className="block sm:hidden w-full pt-0.5">
-            <button
-              type="button"
-              onClick={() => setIsPwaModalOpen(true)}
-              className="w-full min-h-[44px] py-2 px-3 rounded-xl bg-gradient-to-r from-[#F59E0B]/20 via-[#EA580C]/20 to-[#D97706]/20 border border-[#F59E0B]/40 text-[#F59E0B] flex items-center justify-center gap-2 text-xs font-extrabold tracking-wide active:scale-95 transition-all shadow-sm cursor-pointer"
-            >
-              <Smartphone className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Установить приложение «Аудиотека PRO»</span>
-              <ArrowRight className="w-3 h-3 ml-auto opacity-70" aria-hidden="true" />
-            </button>
-          </div>
-        )}
+
       </div>
 
-      {isPwaModalOpen && (
-        <InstallPwaModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
-      )}
     </header>
   );
 }

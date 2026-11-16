@@ -4,7 +4,9 @@
 import React, { useState } from "react";
 import { BookOpen, Headphones, MessageSquare, Mic } from "lucide-react";
 import type { Comment } from "@/lib/types";
-import CommentsTab from "./CommentsTab";
+import dynamic from "next/dynamic";
+
+const CommentsTab = dynamic(() => import("./CommentsTab"));
 import { Tabs } from "@/components/ui/Tabs";
 import { TabsLink } from "./TabsLink"; // Наш кастомный Link
 import { TabsContent } from "@/components/ui/TabsContent";
@@ -79,11 +81,13 @@ export default function BookTabs({
       <TabsContent value="chapters">{chaptersContent}</TabsContent>
       <TabsContent value="narrations">{narrationsContent}</TabsContent>
       <TabsContent value="comments">
-        <CommentsTab
-          bookId={bookId}
-          initialComments={initialComments}
-          onCommentAdded={() => setCommentsCount((n) => n + 1)}
-        />
+        {tab === "comments" && (
+          <CommentsTab
+            bookId={bookId}
+            initialComments={initialComments}
+            onCommentAdded={() => setCommentsCount((n) => n + 1)}
+          />
+        )}
       </TabsContent>
     </Tabs>
   );

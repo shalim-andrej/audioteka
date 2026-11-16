@@ -5,7 +5,6 @@ import React, { useState, useOptimistic, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, Star, ThumbsUp, ShieldAlert } from "lucide-react";
 import type { Comment } from "@/lib/types";
 import { addComment } from "@/lib/actions/comments";
@@ -220,31 +219,14 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
         </div>
       </form>
 
-      {/*
-        AnimatePresence — обязателен для exit-анимации.
-        initial={false} — при первом рендере существующих комментариев
-        анимации появления НЕ будет (они уже на странице).
-        Анимация срабатывает только на новых (optimistic) комментариях.
-      */}
       <div className="space-y-3">
-        <AnimatePresence initial={false}>
           {optimisticComments.map((comm) => {
             const isHidden = comm.isSpoiler && !revealedSpoilers[comm.id];
             const isTemp = comm.id.startsWith("temp-");
 
             return (
-              <motion.div
+              <div
                 key={comm.id}
-                layout
-                initial={{ opacity: 0, y: -24, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, x: -80, transition: { duration: 0.2 } }}
-                transition={{
-                  type: "spring",
-                  stiffness: 320,
-                  damping: 28,
-                  mass: 0.8,
-                }}
                 className={`p-4 sm:p-5 rounded-2xl bg-[#0F1420]/60 border border-white/[0.06] space-y-3 ${
                   isTemp ? "opacity-70" : ""
                 }`}
@@ -287,10 +269,9 @@ export default function CommentsTab({ bookId, initialComments, onCommentAdded }:
                     <span>{comm.likes}</span>
                   </button>
                 </div>
-              </motion.div>
+              </div>
             );
           })}
-        </AnimatePresence>
       </div>
     </div>
   );

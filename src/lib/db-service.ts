@@ -18,8 +18,10 @@ const GENRE_KEYWORDS: Record<string, string[]> = {
 
 function sanitizeCoverUrl(value: unknown): string {
   const url = String(value ?? "").trim();
+
   if (!url) return "";
   if (url.startsWith("data:")) return "";
+
   return url;
 }
 
@@ -27,13 +29,18 @@ let ftsAvailable: boolean | null = null;
 
 async function hasFtsIndex(): Promise<boolean> {
   if (ftsAvailable !== null) return ftsAvailable;
+
   try {
     const db = getDb();
-    await db.execute({ sql: "SELECT rowid FROM books_fts LIMIT 1", args: [] });
+    await db.execute({
+      sql: "SELECT rowid FROM books_fts LIMIT 1",
+      args: [],
+    });
     ftsAvailable = true;
   } catch {
     ftsAvailable = false;
   }
+
   return ftsAvailable;
 }
 
@@ -47,44 +54,77 @@ function toFtsQuery(search: string): string {
 
 function fullRowToAudiobook(row: any): Audiobook {
   let chapters: Chapter[] = [];
+
   try {
     if (row.chapters) {
-      chapters = typeof row.chapters === "string" ? JSON.parse(row.chapters) : row.chapters;
+      chapters =
+        typeof row.chapters === "string"
+          ? JSON.parse(row.chapters)
+          : row.chapters;
     }
   } catch {
     chapters = [];
   }
 
   let comments: any[] = [];
+
   try {
     if (row.comments) {
-      comments = typeof row.comments === "string" ? JSON.parse(row.comments) : row.comments;
+      comments =
+        typeof row.comments === "string"
+          ? JSON.parse(row.comments)
+          : row.comments;
     }
   } catch {}
 
   let tags: string[] = [];
+
   try {
     if (row.tags) {
-      tags = typeof row.tags === "string" ? JSON.parse(row.tags) : row.tags;
+      tags =
+        typeof row.tags === "string"
+          ? JSON.parse(row.tags)
+          : row.tags;
     }
   } catch {}
 
-  const durationSec = Number(row.duration_seconds) || 3600;
+  const isLitres = String(row.id).startsWith("litres-");
+
+  // Для книг Литрес не придумываем длительность,
+  // если она не указана в выгрузке.
+  const durationSec =
+    Number(row.duration_seconds) || (isLitres ? 0 : 3600);
 
   return {
     id: String(row.id),
+
+    // Партнёрская ссылка сохраняется без изменения.
+    listenUrl: row.partner_url
+      ? String(row.partner_url)
+      : undefined,
+
+    source: isLitres ? "litres" : undefined,
+
     title: String(row.title),
     author: String(row.author),
     narrator: String(row.narrator),
     genre: String(row.genre),
-    year: Number(row.year) || 1900,
+    year: Number(row.year) || (isLitres ? 0 : 1900),
     rating: Number(row.rating) || 0,
-    narratorRating: row.narrator_rating ? Number(row.narrator_rating) : undefined,
+    narratorRating: row.narrator_rating
+      ? Number(row.narrator_rating)
+      : undefined,
     votesCount: Number(row.votes_count) || 0,
-    listensCount: row.listens_count ? Number(row.listens_count) : 0,
-    shelvedCount: row.shelved_count ? Number(row.shelved_count) : 0,
+    listensCount: row.listens_count
+      ? Number(row.listens_count)
+      : 0,
+    shelvedCount: row.shelved_count
+      ? Number(row.shelved_count)
+      : 0,
     durationSeconds: durationSec,
-    durationFormatted: String(row.duration_formatted || "1 ч 00 мин"),
+    durationFormatted: String(
+      row.duration_formatted || (isLitres ? "" : "1 ч 00 мин")
+    ),
     bitrate: row.bitrate ? String(row.bitrate) : undefined,
     fileSize: row.file_size ? String(row.file_size) : undefined,
     coverUrl: sanitizeCoverUrl(row.cover_url),
@@ -92,31 +132,36 @@ function fullRowToAudiobook(row: any): Audiobook {
     description: String(row.description || ""),
     isFeatured: Boolean(row.is_featured),
     series: row.series ? String(row.series) : undefined,
-    seriesNextBook: row.series_next_book ? JSON.parse(String(row.series_next_book)) : undefined,
+    seriesNextBook: row.series_next_book
+      ? JSON.parse(String(row.series_next_book))
+      : undefined,
     tags,
     chapters,
-    otherNarrations: row.other_narrations ? JSON.parse(String(row.other_narrations)) : undefined,
+    otherNarrations: row.other_narrations
+      ? JSON.parse(String(row.other_narrations))
+      : undefined,
     comments,
   };
 }
 
 function caseVariants(term: string): string[] {
   const variants = new Set<string>();
+
   if (term.length === 0) return [term];
+
   variants.add(term);
   variants.add(term[0].toUpperCase() + term.slice(1));
   variants.add(term.toLowerCase());
+
   return Array.from(variants);
 }
 
-/*
- * Внутренняя функция — без кэша. Всё, что вызывает unstable_cache,
- * должно быть «чистым» (без побочных эффектов). Аргументы — примитивы,
- * чтобы ключ кэша был предсказуемым.
- */
-async function _getBookByIdFromDb(id: string): Promise<Audiobook | null> {
+async function _getBookByIdFromDb(
+  id: string
+): Promise<Audiobook | null> {
   try {
     await initDb();
+
     const db = getDb();
     const res = await db.execute({
       sql: "SELECT * FROM books WHERE id = ? LIMIT 1",
@@ -133,11 +178,9 @@ async function _getBookByIdFromDb(id: string): Promise<Audiobook | null> {
   return AUDIOBOOKS.find((b) => b.id === id) || null;
 }
 
-/*
- * Кэш одной книги. Тег `book-${id}` — чтобы сбрасывать точечно
- * (revalidateTag("book-123") после мутации).
- */
-export async function getBookByIdFromDb(id: string): Promise<Audiobook | null> {
+export async function getBookByIdFromDb(
+  id: string
+): Promise<Audiobook | null> {
   return unstable_cache(
     () => _getBookByIdFromDb(id),
     ["book", id],
@@ -150,6 +193,7 @@ export async function getBooksFromDb(options?: {
   limit?: number;
   search?: string;
   genre?: string;
+  categoryId?: string;
   sort?: string;
   narrator?: string;
   skipCount?: boolean;
@@ -160,21 +204,29 @@ export async function getBooksFromDb(options?: {
     const offset = (page - 1) * limit;
 
     await initDb();
-    const db = getDb();
 
+    const db = getDb();
     const conditions: string[] = ["clean = 1"];
     const args: (string | number)[] = [];
+
+    if (options?.categoryId) {
+      if (!/^\d{1,16}$/.test(options.categoryId)) return { items: [], total: 0 };
+      conditions.push(`category_id IN (WITH RECURSIVE cats(id) AS (SELECT id FROM litres_categories WHERE id = ? UNION SELECT c.id FROM litres_categories c JOIN cats p ON c.parent_id = p.id) SELECT id FROM cats)`);
+      args.push(options.categoryId);
+    }
 
     if (options?.genre && options.genre !== "Все") {
       const gTerm = options.genre.toLowerCase();
       const keywords = GENRE_KEYWORDS[gTerm] || [gTerm];
       const genreClauses: string[] = [];
+
       for (const kw of keywords) {
         for (const variant of caseVariants(kw)) {
           genreClauses.push("genre LIKE ?");
           args.push(`%${variant}%`);
         }
       }
+
       conditions.push(`(${genreClauses.join(" OR ")})`);
     }
 
@@ -188,38 +240,58 @@ export async function getBooksFromDb(options?: {
 
     if (search) {
       usedFts = await hasFtsIndex();
+
       if (usedFts) {
-        conditions.push("rowid IN (SELECT rowid FROM books_fts WHERE books_fts MATCH ?)");
+        conditions.push(
+          "rowid IN (SELECT rowid FROM books_fts WHERE books_fts MATCH ?)"
+        );
         args.push(toFtsQuery(search));
       } else {
         const words = search.split(/\s+/).filter(Boolean);
+
         for (const word of words) {
           const ors: string[] = [];
+
           for (const variant of caseVariants(word)) {
-            ors.push("title LIKE ?", "author LIKE ?", "narrator LIKE ?");
-            args.push(`%${variant}%`, `%${variant}%`, `%${variant}%`);
+            ors.push(
+              "title LIKE ?",
+              "author LIKE ?",
+              "narrator LIKE ?"
+            );
+
+            args.push(
+              `%${variant}%`,
+              `%${variant}%`,
+              `%${variant}%`
+            );
           }
+
           conditions.push(`(${ors.join(" OR ")})`);
         }
       }
     }
 
     let orderBy = "votes_count DESC";
+
     switch (options?.sort) {
       case "rating":
         orderBy = "rating DESC, votes_count DESC";
         break;
+
       case "newest":
       case "year_desc":
         orderBy = "created_at DESC";
         break;
+
       case "duration":
       case "duration_desc":
         orderBy = "duration_seconds DESC";
         break;
+
       case "duration_asc":
         orderBy = "duration_seconds ASC";
         break;
+
       default:
         orderBy = "votes_count DESC";
     }
@@ -229,7 +301,9 @@ export async function getBooksFromDb(options?: {
 
     if (search && !usedFts) {
       const first = search.split(/\s+/)[0];
+
       orderArgs.push(`${first}%`, `${first}%`);
+
       orderBy = `
         CASE
           WHEN author LIKE ? THEN 2
@@ -256,13 +330,17 @@ export async function getBooksFromDb(options?: {
     const items = dataRes.rows.map(fullRowToAudiobook);
 
     if (options?.skipCount) {
-      return { items, total: offset + items.length };
+      return {
+        items,
+        total: offset + items.length,
+      };
     }
 
     const countRes = await db.execute({
       sql: `SELECT COUNT(*) AS cnt FROM books ${whereSql}`,
       args: whereArgs,
     });
+
     const total = Number(countRes.rows[0]?.cnt || 0);
 
     return { items, total };
@@ -274,6 +352,7 @@ export async function getBooksFromDb(options?: {
 
 export async function insertBookIntoDb(book: Audiobook) {
   await initDb();
+
   const db = getDb();
 
   await db.execute({
@@ -305,10 +384,14 @@ export async function insertBookIntoDb(book: Audiobook) {
       book.isFeatured ? 1 : 0,
       JSON.stringify(book.tags || []),
       JSON.stringify(book.chapters || []),
-      book.otherNarrations ? JSON.stringify(book.otherNarrations) : null,
+      book.otherNarrations
+        ? JSON.stringify(book.otherNarrations)
+        : null,
       book.comments ? JSON.stringify(book.comments) : null,
       book.series || null,
-      book.seriesNextBook ? JSON.stringify(book.seriesNextBook) : null,
+      book.seriesNextBook
+        ? JSON.stringify(book.seriesNextBook)
+        : null,
       Date.now(),
     ],
   });
@@ -316,15 +399,15 @@ export async function insertBookIntoDb(book: Audiobook) {
 
 // ===== Комментарии =====
 
-/*
- * Внутренняя функция получения комментариев.
- * Кэшируется через unstable_cache: если пользователь открыл книгу,
- * следующий заход в течение 60 секунд — из кэша.
- */
-async function _getCommentsFromDb(bookId: string, limit: number = 50): Promise<Comment[]> {
+async function _getCommentsFromDb(
+  bookId: string,
+  limit: number = 50
+): Promise<Comment[]> {
   try {
     await initDb();
+
     const db = getDb();
+
     const res = await db.execute({
       sql: `SELECT id, user, avatar, date, rating, text, likes, is_spoiler
             FROM comments
@@ -350,11 +433,17 @@ async function _getCommentsFromDb(bookId: string, limit: number = 50): Promise<C
   }
 }
 
-export async function getCommentsFromDb(bookId: string, limit: number = 50): Promise<Comment[]> {
+export async function getCommentsFromDb(
+  bookId: string,
+  limit: number = 50
+): Promise<Comment[]> {
   return unstable_cache(
     () => _getCommentsFromDb(bookId, limit),
     ["comments", bookId, String(limit)],
-    { revalidate: 60, tags: [`comments-${bookId}`] }
+    {
+      revalidate: 60,
+      tags: [`comments-${bookId}`],
+    }
   )();
 }
 
@@ -366,14 +455,21 @@ export async function addCommentToDb(input: {
   isSpoiler: boolean;
 }): Promise<Comment> {
   await initDb();
+
   const db = getDb();
 
-  const id = "c-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+  const id =
+    "c-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+
   const createdAt = Date.now();
-  const date = "Сегодня в " + new Date().toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+
+  const date =
+    "Сегодня в " +
+    new Date().toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
   const avatar = (input.user || "СП").slice(0, 2).toUpperCase();
 
   await db.execute({
@@ -406,18 +502,19 @@ export async function addCommentToDb(input: {
   };
 }
 
-/*
- * Быстрый счётчик — тоже кэшируется на 60 секунд.
- * Тег comments-count-${bookId} — чтобы сбрасывать точечно после addComment.
- */
-async function _getCommentsCountFromDb(bookId: string): Promise<number> {
+async function _getCommentsCountFromDb(
+  bookId: string
+): Promise<number> {
   try {
     await initDb();
+
     const db = getDb();
+
     const res = await db.execute({
       sql: `SELECT COUNT(*) AS cnt FROM comments WHERE book_id = ?`,
       args: [bookId],
     });
+
     return Number(res.rows[0]?.cnt || 0);
   } catch (e) {
     console.warn("getCommentsCountFromDb error:", e);
@@ -425,10 +522,15 @@ async function _getCommentsCountFromDb(bookId: string): Promise<number> {
   }
 }
 
-export async function getCommentsCountFromDb(bookId: string): Promise<number> {
+export async function getCommentsCountFromDb(
+  bookId: string
+): Promise<number> {
   return unstable_cache(
     () => _getCommentsCountFromDb(bookId),
     ["comments-count", bookId],
-    { revalidate: 60, tags: [`comments-count-${bookId}`] }
+    {
+      revalidate: 60,
+      tags: [`comments-count-${bookId}`],
+    }
   )();
 }

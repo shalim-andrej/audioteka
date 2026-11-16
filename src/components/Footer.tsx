@@ -1,12 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
-import { Headphones, ShieldCheck, Mail, HelpCircle, FileText, Heart, MessageSquare, Smartphone, Scale, Lock } from "lucide-react";
-import InstallPwaModal from "@/components/InstallPwaModal";
+import { Headphones, ShieldCheck, Mail, HelpCircle, FileText, Heart, MessageSquare, Scale, Lock } from "lucide-react";
 
 export default function Footer() {
-  const [isPwaModalOpen, setIsPwaModalOpen] = useState(false);
 
   return (
     <>
@@ -31,13 +29,7 @@ export default function Footer() {
                   <span>Без VPN в РФ • Прямой стриминг</span>
                 </div>
 
-                <button
-                  onClick={() => setIsPwaModalOpen(true)}
-                  className="flex items-center gap-2 text-xs font-bold text-[#F59E0B] bg-[#F59E0B]/10 hover:bg-[#F59E0B]/20 border border-[#F59E0B]/30 px-3 py-1.5 rounded-xl transition-all cursor-pointer w-fit shadow-sm"
-                >
-                  <Smartphone className="w-3.5 h-3.5" />
-                  <span>📱 Установить приложение</span>
-                </button>
+
               </div>
             </div>
 
@@ -46,6 +38,7 @@ export default function Footer() {
               <h4 className="font-bold text-white uppercase text-[11px] tracking-wider">Каталог</h4>
               <ul className="space-y-2">
                 <li><Link href="/" className="hover:text-[#F59E0B] transition-colors">Все аудиокниги</Link></li>
+                <li><Link href="/akcii" prefetch={false} className="hover:text-[#F59E0B] transition-colors">Акции Литрес</Link></li>
                 <li><Link href="/?genre=Фантастика" className="hover:text-[#F59E0B] transition-colors">Фантастика и фэнтези</Link></li>
                 <li><Link href="/?genre=Детективы" className="hover:text-[#F59E0B] transition-colors">Детективы и триллеры</Link></li>
                 <li><Link href="/?genre=Классика" className="hover:text-[#F59E0B] transition-colors">Золотая классика</Link></li>
@@ -97,8 +90,6 @@ export default function Footer() {
         </div>
       </footer>
 
-      {/* PWA Install Modal */}
-      <InstallPwaModal isOpen={isPwaModalOpen} onClose={() => setIsPwaModalOpen(false)} />
     </>
   );
 }

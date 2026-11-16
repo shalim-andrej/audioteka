@@ -52,14 +52,18 @@ self.addEventListener("fetch", (event) => {
       .then((response) => {
         if (response.status === 200) {
           const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
+          event.waitUntil(
+            caches.open(CACHE_NAME)
+              .then((cache) => cache.put(event.request, responseClone))
+              .catch(() => {})
+          );
         }
         return response;
       })
       .catch(() => {
-        return caches.match(event.request);
+        return caches.match(event.request)
+          .then((cached) => cached || Response.error())
+          .catch(() => Response.error());
       })
   );
 });

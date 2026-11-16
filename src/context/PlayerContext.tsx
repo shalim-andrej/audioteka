@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useMemo,
 import { Audiobook, Chapter, Bookmark } from "@/lib/types";
 import { reachMetrikaGoal } from "@/components/YandexMetrika";
 import { getBook } from "@/lib/actions/audiobooks";
+import { getLitresFragment } from "@/lib/actions/litres-fragment";
 
 interface PlayerContextType {
   currentBook: Audiobook | null;
@@ -21,6 +22,8 @@ interface PlayerContextType {
   history: { bookId: string; timestamp: number; progressSec: number; chapterIndex?: number }[];
   bookmarks: Bookmark[];
   isVoiceBoost: boolean;
+  playbackError: string | null;
+  fragmentEnded: boolean;
   lastListened: { book: Audiobook; chapterIndex: number; timeSec: number } | null;
   playBook: (book: Audiobook, chapterIndex?: number, startTime?: number) => void;
   togglePlay: () => void;
@@ -47,6 +50,8 @@ const PlayerContext = createContext<PlayerContextType | null>(null);
 
 interface PlayerUiState {
   currentBookId: string | null;
+  playbackError: string | null;
+  errorBookId: string | null;
   isPlaying: boolean;
   playBook: (book: Audiobook, chapterIndex?: number, startTime?: number) => void;
   togglePlay: () => void;
@@ -62,6 +67,10 @@ const RATE_KEY = "audio_rate";
 const BOOST_KEY = "audio_voice_boost";
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
+  const [errorBookId, setErrorBookId] = useState<string | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [fragmentEnded, setFragmentEnded] = useState(false);
+  const requestRef = useRef(0);
   const [currentBook, setCurrentBook] = useState<Audiobook | null>(null);
   const [currentChapterIndex, setCurrentChapterIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -167,6 +176,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
 
     const onEnded = () => {
+      if (currentBookRef.current?.source === "litres") setFragmentEnded(true);
       if (sleepModeRef.current === "chapter") {
         audio.pause();
         setIsPlaying(false);
@@ -183,6 +193,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const chIdx = currentChapterIndexRef.current;
       // refs обновляются синхронно в playBook, поэтому здесь
       // гарантированно лежит та книга, которую нажали
+      if (b?.source === "litres") { setIsPlaying(false); setPlaybackError("Не удалось загрузить фрагмент. Попробуйте ещё раз."); return; }
       if (audio.src && !audio.src.includes("/api/stream?url=") && b?.chapters?.[chIdx]?.audioUrl) {
         audio.src = `/api/stream?url=${encodeURIComponent(b.chapters[chIdx].audioUrl)}`;
         audio.load();
@@ -233,22 +244,36 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // --- ОСНОВНЫЕ ФУНКЦИИ ---
 
   const playBook = useCallback(async (book: Audiobook, chapterIndex: number = 0, startTime?: number) => {
+    const request = ++requestRef.current;
     const audio = ensureAudio();
+    setPlaybackError(null);
+    setErrorBookId(null);
+    setFragmentEnded(false);
 
     let fullBook = book;
-    if (!fullBook.chapters || fullBook.chapters.length === 0) {
-      try {
-        // Server Action вместо fetch('/api/audiobooks/<id>'):
-        // Next.js сам отправляет POST на сервер, выполняет getBook,
-        // возвращает Audiobook | null. Меньше кода, типобезопасно, кэшируется.
-        const fullBookData = await getBook(book.id);
-        if (fullBookData && Array.isArray(fullBookData.chapters) && fullBookData.chapters.length > 0) {
-          fullBook = fullBookData;
-        }
-      } catch (e) {
-        console.warn("Не удалось загрузить главы книги:", e);
+    if (book.source === "litres" || book.id.startsWith("litres-")) {
+      // Данные фрагмента загружаются при запуске, а не в каталоге.
+      let fragmentUrl: string | null = null;
+      let loadedBook: Audiobook | null = null;
+      try { [fragmentUrl, loadedBook] = await Promise.all([getLitresFragment(book.id), book.listenUrl ? Promise.resolve(book) : getBook(book.id)]); } catch { /* ниже покажем ошибку */ }
+      if (request !== requestRef.current) return;
+      if (!fragmentUrl) {
+        setErrorBookId(book.id);
+        setPlaybackError("Фрагмент недоступен. Откройте книгу на Литрес.");
+        return;
       }
+      fullBook = { ...(loadedBook || book), source: "litres", chapters: [{
+        id: `${book.id}-fragment`, title: "Ознакомительный фрагмент",
+        duration: 0, durationFormatted: "", audioUrl: fragmentUrl,
+      }] };
+    } else if (!fullBook.chapters || fullBook.chapters.length === 0) {
+      try {
+        const fullBookData = await getBook(book.id);
+        if (request !== requestRef.current) return;
+        if (fullBookData && Array.isArray(fullBookData.chapters) && fullBookData.chapters.length > 0) fullBook = fullBookData;
+      } catch (e) { console.warn("Не удалось загрузить главы книги:", e); }
     }
+    if (request !== requestRef.current) return;
 
     const chapters = fullBook.chapters ?? [];
     if (chapters.length === 0) {
@@ -292,7 +317,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
      * запускался аварийный путь onError.
      */
     let streamUrl = chapter.audioUrl;
-    if (/^https?:\/\//i.test(streamUrl)) {
+    if (fullBook.source !== "litres" && /^https?:\/\//i.test(streamUrl)) {
       streamUrl = `/api/stream?url=${encodeURIComponent(streamUrl)}`;
     }
 
@@ -310,6 +335,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
      * с нуля даже если пользователь продолжал с середины.
      */
     const applyStartTime = () => {
+      if (request !== requestRef.current) return;
       try {
         audio.currentTime = targetTime;
       } catch {
@@ -326,6 +352,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await audio.play();
+      if (request !== requestRef.current) return;
       setIsPlaying(true);
       reachMetrikaGoal("play_audio", {
         bookId: fullBook.id,
@@ -334,8 +361,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         chapterIndex: idx,
       });
     } catch (err) {
+      if (request !== requestRef.current) return;
       const name = (err as DOMException)?.name;
       if (name === "AbortError") return;
+      if (fullBook.source === "litres") { setErrorBookId(fullBook.id); setIsPlaying(false); setPlaybackError("Не удалось запустить фрагмент. Нажмите воспроизведение ещё раз."); return; }
       // фолбэк через стрим-прокси
       if (chapter.audioUrl && !audio.src.includes("/api/stream?url=")) {
         audio.src = `/api/stream?url=${encodeURIComponent(chapter.audioUrl)}`;
@@ -359,7 +388,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.pause();
       setIsPlaying(false);
     } else {
-      audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      setFragmentEnded(false);
+      setPlaybackError(null);
+      audio.play().then(() => setIsPlaying(true)).catch(() => { setIsPlaying(false); setPlaybackError("Не удалось запустить аудио. Попробуйте ещё раз."); });
     }
   }, [isPlaying, currentBook]);
 
@@ -451,6 +482,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const closePlayer = useCallback(() => {
+    requestRef.current++;
+    setFragmentEnded(false);
+    setPlaybackError(null);
+    setErrorBookId(null);
     if (audioRef.current) audioRef.current.pause();
     setIsPlaying(false);
     setCurrentBook(null);
@@ -635,6 +670,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     history,
     bookmarks,
     isVoiceBoost,
+    playbackError,
+    fragmentEnded,
     lastListened,
     playBook,
     togglePlay,
@@ -657,7 +694,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }), [
     currentBook, currentChapter, currentChapterIndex, isPlaying, currentTime, duration,
     playbackRate, volume, isMuted, isExpanded, sleepTimer, sleepMode,
-    history, bookmarks, isVoiceBoost, lastListened,
+    history, bookmarks, isVoiceBoost, playbackError, fragmentEnded, lastListened,
     playBook, togglePlay, seek, skipTime, setRate, setVol, toggleMute, nextChapter,
     prevChapter, setSleep, closePlayer, toggleVoiceBoost, addBookmark, removeBookmark,
     jumpToBookmark, resumeLastListened, removeHistoryEntries,
@@ -668,12 +705,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const uiValue = useMemo<PlayerUiState>(
     () => ({
       currentBookId: currentBook?.id ?? null,
+      playbackError,
+      errorBookId,
       isPlaying,
       playBook,
       togglePlay,
       history,
     }),
-    [currentBook?.id, isPlaying, playBook, togglePlay, history]
+    [currentBook?.id, playbackError, errorBookId, isPlaying, playBook, togglePlay, history]
   );
 
   return (

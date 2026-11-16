@@ -1,14 +1,14 @@
 // src/app/api/image/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 
-// Ограничиваем допустимые ширины, чтобы нельзя было дернуть ?w=100000
 const ALLOWED_WIDTHS = [200, 400, 600, 800, 1200] as const;
 const DEFAULT_WIDTH = 400;
 
-// Разрешённые домены — защита от SSRF (чтобы через наш прокси
-// нельзя было сходить на localhost, 169.254.169.254 и т.п.)
+// Только разрешённые домены обложек.
 const ALLOWED_HOSTS = [
+  "cdn.litres.ru",
   "archive.org",
   "www.archive.org",
   "ia600.us.archive.org",
@@ -38,7 +38,17 @@ function buildPlaceholder(): string {
   return `
     <svg width="300" height="450" xmlns="http://www.w3.org/2000/svg">
       <rect width="100%" height="100%" fill="#1B2233"/>
-      <text x="50%" y="50%" fill="#F59E0B" font-family="serif" font-size="20" text-anchor="middle" dominant-baseline="middle">Аудиотека PRO</text>
+      <text
+        x="50%"
+        y="50%"
+        fill="#F59E0B"
+        font-family="serif"
+        font-size="20"
+        text-anchor="middle"
+        dominant-baseline="middle"
+      >
+        Аудиотека PRO
+      </text>
     </svg>
   `;
 }
@@ -56,28 +66,29 @@ function placeholderResponse(): NextResponse {
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const rawUrl = params.get("url");
+
   if (!rawUrl) {
     return new NextResponse("Missing url", { status: 400 });
   }
 
-  // Проверяем, что URL валиден и ведёт на разрешённый хост
   let targetUrl: URL;
+
   try {
     targetUrl = new URL(rawUrl);
   } catch {
     return new NextResponse("Invalid url", { status: 400 });
   }
+
   if (!ALLOWED_HOSTS.includes(targetUrl.hostname)) {
     return new NextResponse("Host not allowed", { status: 403 });
   }
 
-  // Ширина: только из белого списка
   const widthParam = Number.parseInt(params.get("w") ?? "", 10);
+
   const width = (ALLOWED_WIDTHS as readonly number[]).includes(widthParam)
     ? widthParam
     : DEFAULT_WIDTH;
 
-  // Формат: webp по умолчанию (наш BookCard его и просит)
   const format = params.get("format") === "jpeg" ? "jpeg" : "webp";
 
   try {
@@ -88,7 +99,6 @@ export async function GET(request: NextRequest) {
         Referer: "https://audioteka-pro.ru/",
         Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
       },
-      // Next.js кэш на нашем сервере на сутки
       next: { revalidate: 86400 },
     });
 
@@ -98,12 +108,12 @@ export async function GET(request: NextRequest) {
 
     const buffer = Buffer.from(await upstream.arrayBuffer());
 
-    // Пережимаем и ресайзим через sharp
-    const pipeline = sharp(buffer, { failOn: "none" }).rotate(); // rotate() — авто-ориентация EXIF
+    const pipeline = sharp(buffer, { failOn: "none" }).rotate();
 
-    // Не апскейлим: если оригинал уже меньше — оставляем как есть
     const meta = await pipeline.metadata();
-    const targetWidth = meta.width && meta.width < width ? meta.width : width;
+
+    const targetWidth =
+      meta.width && meta.width < width ? meta.width : width;
 
     const optimized =
       format === "webp"
@@ -116,16 +126,14 @@ export async function GET(request: NextRequest) {
             .jpeg({ quality: 80, mozjpeg: true })
             .toBuffer();
 
-    const contentType = format === "webp" ? "image/webp" : "image/jpeg";
+    const contentType =
+      format === "webp" ? "image/webp" : "image/jpeg";
 
     return new NextResponse(new Uint8Array(optimized), {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        // URL неизменяем (по нему всегда одна и та же книга),
-        // поэтому кэш можно ставить на год и immutable.
         "Cache-Control": "public, max-age=31536000, immutable",
-        // Отдаём браузеру подсказку, что CDN тоже может держать долго
         "CDN-Cache-Control": "public, max-age=31536000",
       },
     });

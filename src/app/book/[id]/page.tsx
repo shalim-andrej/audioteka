@@ -21,6 +21,8 @@ import {
   getCommentsCountFromDb,
 } from "@/lib/db-service";
 import BookCard from "@/components/BookCard";
+import PromotionsPanel from "@/components/PromotionsPanel";
+import LitresFragmentPanel from "@/components/LitresFragmentPanel";
 import BookShell from "./BookShell";
 import { BookActions, NarrationsList } from "./BookActions";
 import BookRating from "./BookRating";
@@ -108,6 +110,7 @@ export default async function BookDetailPage({
     }
   }
 
+  const isLitresBook = book.source === "litres" || book.id.startsWith("litres-");
   const chapters = book.chapters ?? [];
   const totalSeconds = Number(book.durationSeconds) || 0;
   const durationHours = Math.floor(totalSeconds / 3600);
@@ -267,6 +270,7 @@ export default async function BookDetailPage({
       <BookShell>
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Link
+            prefetch={false}
             href="/"
             className="inline-flex items-center gap-2 min-h-[44px] mb-3 text-sm font-bold text-[#F59E0B] hover:text-[#EA580C] transition-colors"
           >
@@ -274,15 +278,15 @@ export default async function BookDetailPage({
           </Link>
 
           <nav className="flex items-center gap-2 text-xs text-gray-400 mb-6 flex-wrap">
-            <Link href="/" className="hover:text-[#F59E0B] transition-colors flex items-center gap-1">
+            <Link href="/" prefetch={false} className="hover:text-[#F59E0B] transition-colors flex items-center gap-1">
               <ArrowLeft className="w-3.5 h-3.5" />
               Главная
             </Link>
             <span>/</span>
-            <span className="text-gray-500">Жанр:</span>
-            <Link href={`/?genre=${encodeURIComponent(book.genre)}`} className="hover:text-[#F59E0B] transition-colors">{book.genre}</Link>
+            <span className="text-gray-400">Жанр:</span>
+            <Link prefetch={false} href={`/?genre=${encodeURIComponent(book.genre)}`} className="hover:text-[#F59E0B] transition-colors">{book.genre}</Link>
             <span>/</span>
-            <span className="text-gray-500">Автор:</span>
+            <span className="text-gray-400">Автор:</span>
             <span className="text-gray-300 font-medium">{book.author}</span>
             <span>/</span>
             <span className="text-[#F59E0B] font-semibold truncate max-w-[260px]">{book.title}</span>
@@ -295,6 +299,7 @@ export default async function BookDetailPage({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={book.coverUrl}
+                    fetchPriority="high"
                     alt={book.title}
                     className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                   />
@@ -321,35 +326,44 @@ export default async function BookDetailPage({
                   Технические данные
                 </h4>
                 <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Время звучания:</span>
-                    <span className="font-semibold text-white">{book.durationFormatted}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Битрейт аудио:</span>
-                    <span className="font-semibold text-white">{book.bitrate || "192 kbps, MP3 Stereo"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Размер архива:</span>
-                    <span className="font-semibold text-white">{book.fileSize || "480 МБ"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Год издания:</span>
-                    <span className="font-semibold text-white">{book.year} г.</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Язык:</span>
-                    <span className="font-semibold text-emerald-400">Русский (полный)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">На полках:</span>
-                    <span className="font-semibold text-[#F59E0B]">
-                      {book.shelvedCount
-                        ? book.shelvedCount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")
-                        : "3 820"}{" "}
-                      читателей
-                    </span>
-                  </div>
+                  {(book.durationFormatted || !isLitresBook) && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Время звучания:</span>
+                      <span className="font-semibold text-white">{book.durationFormatted || "Не указано"}</span>
+                    </div>
+                  )}
+                  {(book.bitrate || !isLitresBook) && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Битрейт аудио:</span>
+                      <span className="font-semibold text-white">{book.bitrate || "192 kbps, MP3 Stereo"}</span>
+                    </div>
+                  )}
+                  {(book.fileSize || !isLitresBook) && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Размер архива:</span>
+                      <span className="font-semibold text-white">{book.fileSize || "480 МБ"}</span>
+                    </div>
+                  )}
+                  {book.year > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Год издания:</span>
+                      <span className="font-semibold text-white">{book.year} г.</span>
+                    </div>
+                  )}
+                  {!isLitresBook && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Язык:</span>
+                      <span className="font-semibold text-emerald-400">Русский (полный)</span>
+                    </div>
+                  )}
+                  {(Boolean(book.shelvedCount) || !isLitresBook) && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">На полках:</span>
+                      <span className="font-semibold text-[#F59E0B]">
+                        {book.shelvedCount ? book.shelvedCount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") : "3 820"} читателей
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -395,12 +409,18 @@ export default async function BookDetailPage({
                 </div>
               </div>
 
-              <BookPlayerPanel
-                book={playable}
-                firstChapterTitle={chapters[0]?.title || book.title}
-                chaptersCount={chapters.length}
-                durationFormatted={chapters[0]?.durationFormatted || book.durationFormatted}
-              />
+              {book.source === "litres" ? (
+                <LitresFragmentPanel bookId={book.id} />
+              ) : (
+                <BookPlayerPanel
+                  book={playable}
+                  firstChapterTitle={chapters[0]?.title || book.title}
+                  chaptersCount={chapters.length}
+                  durationFormatted={chapters[0]?.durationFormatted || book.durationFormatted}
+                />
+              )}
+
+              <PromotionsPanel />
 
               {/* Клиентский BookTabs: вкладки + счётчик комментариев + контент */}
               <BookTabs

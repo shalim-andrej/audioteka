@@ -12,14 +12,6 @@ const nextConfig: NextConfig = {
   },
 
   images: {
-    /*
-     * true = Next отдаёт адрес картинки как есть, браузер идёт прямо
-     * на s5.knigavuhe.org. Оптимизатор /_next/image не используется вообще.
-     *
-     * Почему это важно: оптимизатор — это запрос на НАШ сервер, который
-     * внутри идёт за картинкой на чужой хост. Пока он ждёт ответа, он
-     * занимает одно из шести соединений браузера с нашим доменом.
-     */
     unoptimized: true,
 
     remotePatterns: [
@@ -37,7 +29,11 @@ const nextConfig: NextConfig = {
   },
 
   experimental: {
-    optimizePackageImports: ["lucide-react", "framer-motion", "date-fns"],
+    optimizePackageImports: [
+      "lucide-react",
+      "framer-motion",
+      "date-fns",
+    ],
   },
 
   poweredByHeader: false,
@@ -47,23 +43,36 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: [
-          // ===== Транспорт и MIME =====
-          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          // Транспорт и MIME
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
           { key: "X-Content-Type-Options", value: "nosniff" },
 
-          // ===== Изоляция =====
+          // Изоляция
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
-          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin",
+          },
+          {
+            key: "Cross-Origin-Resource-Policy",
+            value: "same-origin",
+          },
 
-          // ===== Утечки =====
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+          // Утечки
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            key: "X-Permitted-Cross-Domain-Policies",
+            value: "none",
+          },
           { key: "X-DNS-Prefetch-Control", value: "off" },
 
-          // ===== Разрешения браузера =====
-          // Микрофон/камера/гео не используются — запрещаем.
-          // autoplay разрешён для своего домена (аудиоплеер).
+          // Разрешения браузера
           {
             key: "Permissions-Policy",
             value: [
@@ -81,13 +90,13 @@ const nextConfig: NextConfig = {
             ].join(", "),
           },
 
-          // ===== CSP =====
+          // Политика безопасности
           {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
               "img-src 'self' data: blob: https:",
-              "media-src 'self' blob:",
+              "media-src 'self' blob: https://www.litres.ru",
               "script-src 'self' 'unsafe-inline' https://mc.yandex.ru https://yandex.ru",
               "style-src 'self' 'unsafe-inline'",
               "font-src 'self' data:",

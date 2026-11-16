@@ -38,6 +38,8 @@ function AudioPlayerBar() {
     sleepTimer,
     sleepMode,
     isVoiceBoost,
+    playbackError,
+    fragmentEnded,
     togglePlay,
     seek,
     skipTime,
@@ -63,6 +65,8 @@ function AudioPlayerBar() {
   if (!currentBook || !currentChapter) return null;
 
   const isFav = isFavorite(currentBook.id);
+  const isFragment = currentBook.source === "litres";
+  const partnerUrl = (() => { try { const u = new URL(currentBook.listenUrl || ""); return u.protocol === "https:" && ["www.litres.ru", "litres.ru"].includes(u.hostname) ? currentBook.listenUrl : null; } catch { return null; } })();
 
   const formatSec = (seconds: number) => {
     if (isNaN(seconds) || seconds < 0) return "0:00";
@@ -116,8 +120,10 @@ function AudioPlayerBar() {
           />
         </div>
 
-        <div className="flex items-center justify-between gap-3 sm:gap-6">
-          <div className="flex items-center gap-3 min-w-0 w-[200px] sm:w-[280px]">
+        {isFragment && partnerUrl && <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-200"><span>{fragmentEnded ? "Фрагмент завершён" : "Ознакомительный фрагмент"}</span><a href={partnerUrl} target="_blank" rel="noopener noreferrer sponsored" className="font-bold text-amber-400 underline">Полная версия на Литрес</a></div>}
+        {playbackError && <p role="alert" className="text-xs text-red-400">{playbackError}</p>}
+        <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 sm:gap-6">
+          <div className="flex items-center gap-3 min-w-0 w-full sm:w-[280px]">
             <Link
               href={`/book/${currentBook.id}`}
               prefetch={false}
@@ -163,12 +169,12 @@ function AudioPlayerBar() {
             </button>
           </div>
 
-          <div className="flex-1 max-w-lg flex flex-col items-center gap-1">
+          <div className="w-full sm:w-auto flex-none sm:flex-1 max-w-lg flex flex-col items-center gap-1">
             <div className="flex items-center gap-1 sm:gap-3">
               <button
                 type="button"
                 onClick={prevChapter}
-                disabled={currentChapterIndex === 0 && currentTime <= 5}
+                disabled={isFragment || (currentChapterIndex === 0 && currentTime <= 5)}
                 aria-label="Предыдущая глава"
                 className="grid place-items-center min-w-[44px] min-h-[44px] text-gray-200 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
               >
@@ -215,7 +221,7 @@ function AudioPlayerBar() {
               <button
                 type="button"
                 onClick={nextChapter}
-                disabled={currentChapterIndex >= (currentBook.chapters?.length ?? 0) - 1}
+                disabled={isFragment || currentChapterIndex >= (currentBook.chapters?.length ?? 0) - 1}
                 aria-label="Следующая глава"
                 className="grid place-items-center min-w-[44px] min-h-[44px] text-gray-200 hover:text-white disabled:opacity-30 transition-colors cursor-pointer"
               >
@@ -239,7 +245,7 @@ function AudioPlayerBar() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="w-full sm:w-auto flex items-center justify-center sm:justify-start gap-1 sm:gap-2">
             <div className="relative">
               <button
                 type="button"
@@ -327,7 +333,7 @@ function AudioPlayerBar() {
                         : "text-[#F59E0B] hover:bg-white/10"
                     }`}
                   >
-                    <span>До конца главы 🌙</span>
+                    <span>{isFragment ? "До конца фрагмента 🌙" : "До конца главы 🌙"}</span>
                   </button>
                   {[15, 30, 45, 60].map((min) => (
                     <button
@@ -350,7 +356,7 @@ function AudioPlayerBar() {
               )}
             </div>
 
-            <button
+            {!isFragment && <button
               type="button"
               onClick={toggleVoiceBoost}
               aria-pressed={isVoiceBoost}
@@ -363,7 +369,7 @@ function AudioPlayerBar() {
             >
               <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
               <span className="hidden lg:inline">{isVoiceBoost ? "Голос +" : "Чёткость"}</span>
-            </button>
+            </button>}
 
             <button
               type="button"
@@ -387,7 +393,7 @@ function AudioPlayerBar() {
               )}
             </button>
 
-            <button
+            {!isFragment && <button
               type="button"
               onClick={handleShareTimestamp}
               aria-label="Скопировать ссылку на этот момент"
@@ -403,7 +409,7 @@ function AudioPlayerBar() {
                   Скопировано
                 </span>
               )}
-            </button>
+            </button>}
 
             {/*
               Кнопка «Скачать MP3» удалена намеренно: раздача аудиофайлов
@@ -440,7 +446,7 @@ function AudioPlayerBar() {
             <Link
               href={`/book/${currentBook.id}`}
               prefetch={false}
-              aria-label="Список глав"
+              aria-label={isFragment ? "Страница книги" : "Список глав"}
               className="grid place-items-center min-w-[44px] min-h-[44px] rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-gray-200 hover:text-white border border-white/[0.08] transition-colors"
             >
               <ListMusic className="w-4 h-4" aria-hidden="true" />
